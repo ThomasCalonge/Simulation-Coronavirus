@@ -81,13 +81,13 @@ to infect
 end
 
 to create-population
-
   create-sedentaires num-population * 0.8
   [
     let x random-pxcor
     let y random-pycor
 
-    setxy x y ;; put androids on patch centers
+    ;; put androids on patch centers
+    setxy x y
 
     set house patch-here
     set work one-of patches in-radius ((random 17) + 3)
@@ -111,7 +111,8 @@ to create-population
     let x random-pxcor
     let y random-pycor
 
-    setxy x y ;; put androids on patch centers
+    ;; put androids on patch centers
+    setxy x y
 
     set color gray
     set heading 90 * random 4
@@ -136,99 +137,150 @@ to go
   ;; in order to extend the plot for a little while
   ;; after all the turtles are infected...
   if num-sick = count turtles
-    [ set delay delay + 1  ]
+  [ set delay delay + 1  ]
   if delay > 50
-    [ stop ]
+  [ stop ]
   ;; now for the main stuff;
   change-color
   sickness-evolution
   androids-wander
 
-  ask turtles with [ incubation? and count-time > 80 ] ;; Les gens ayant le virus incubé crachent aussi leurs poumons
-    [ spread-disease ]
-  ask turtles with [ malade? ] ;; Les malades crachent leurs poumons sur les surfaces
-    [ spread-disease ]
-  ask patches with [ germes? ] ;; Les germes sur la surface
-    [ spread-disease-patch ]
+  ;; infected people spit their lungs on surfaces
+  ask turtles with [ incubation? and count-time > 80 ] [ spread-disease ]
+  
+  ;; sick people spit their lungs on surfaces
+  ask turtles with [ malade? ] [ spread-disease ]
+
+  ;; germs spread virus
+  ask patches with [ germes? ] [ spread-disease-patch ]
 
   set num-sick count turtles with [ malade? ]
 
   tick
 end
 
-to change-color ;; Gère la couleur de chaque objet
-  ask turtles with [ immunise? ]
-  [ set color blue ]
-  ask turtles with [ incubation? ]
-  [ set color white ]
-  ask turtles with [ malade? ]
-  [ set color green ]
-  ask turtles with [ grave? ]
-  [ set color red ]
-  ask patches with [ germes? ]
-  [ set pcolor 51 ]
-  ask patches with [ germes? = false ]
-  [ set pcolor black ]
+;; manage each object color
+to change-color
+  ask turtles with [ immunise? ] [ set color blue ]
+  ask turtles with [ incubation? ] [ set color white ]
+  ask turtles with [ malade? ] [ set color green ]
+  ask turtles with [ grave? ] [ set color red ]
+  ask patches with [ germes? ] [ set pcolor 51 ]
+  ask patches with [ germes? = false ] [ set pcolor black ]
 end
 
 to sickness-evolution
+  ;; each tick kill virus
   ask patches with [ germes? ] [
-    if ( germes = 0 ) [ set germes? false ]
-    set dying-time dying-time + 1 ;; Chaque tick en temps qui va tuer le virus
-    if(dying-time = 10) [
+    if ( germes = 0 )
+    [ set germes? false ]
+    ;; germ is aging
+    set dying-time dying-time + 1
+    ;; germs die outside an host
+    if(dying-time = 10)
+    [
       set dying-time 0
       set germes germes - 20
     ]
-  ] ;; Les germes meurent en l'absence d'un organisme
+  ]
 
-  ask turtles with [ incubation? ] [
-    ifelse(count-time = 140)
-    [ set incubation? false set malade? true set count-time 0 ]
+  ;; incubation after an elpased time
+  ask turtles with [ incubation? ]
+  [
+    ifelse ( count-time = 140 )
+    [
+      set incubation? false
+      set malade? true
+      set count-time 0
+    ]
     [ set count-time count-time + 1 ]
-  ] ;; incubation après un certain temps
+  ]
 
-  ask turtles with [ malade? ] [
-    if(count-time > 70) [set malade? false set immunise? true]
-    ifelse(count-time = 70 and random 100 > 90) [
-      set grave? true set malade? false set count-time 0]
+  ask turtles with [ malade? ]
+  [
+    if ( count-time > 70 )
+    [
+      set malade? false
+      set immunise? true
+    ]
+    ifelse ( count-time = 70 and random 100 > 90 )
+    [
+      set grave? true
+      set malade? false
+      set count-time 0
+    ]
     [ set count-time count-time + 1 ]
-  ] ;; 10% de chance d'allez en réanimation
+  ] ;; 10% risk to get in intensive care
 
-  ask turtles with [ grave? ] [
-    if (count-time > 40) [ set grave? false set immunise? true stop  set nb-place-disponible nb-place-disponible + 1 ]
-
-    if (nb-place-disponible > 0 and reanimation? = false)[ set nb-place-disponible nb-place-disponible - 1 set reanimation? true ] ;; Il prend une place en réa
-
-    ifelse(count-time = 40) [
-      ifelse (reanimation?)
-      [
-        if(random 100 < 20)
-        [
-          set deaths deaths + 1 set nb-place-disponible nb-place-disponible + 1 die
-        ] ;; 20% de chance de mourir si place d'hôpital disponible
-      ]
-
-      [
-        if(random 100 > 20)[ set deaths deaths + 1 die ]
-      ] ;; 80% de chance de mourir sans place d'hôpital
+  ask turtles with [ grave? ]
+  [
+    if ( count-time > 40 )
+    [
+      set grave? false
+      set immunise? true stop
+      set nb-place-disponible nb-place-disponible + 1
     ]
 
+    ;; taking one intensive care slot
+    if ( nb-place-disponible > 0 and reanimation? = false )
+    [
+      set nb-place-disponible nb-place-disponible - 1
+      set reanimation? true
+    ]
+
+    ifelse ( count-time = 40 )
+    [
+      ifelse ( reanimation? )
+      [
+        if ( random 100 < 20 )
+        [
+          set deaths deaths + 1
+          set nb-place-disponible nb-place-disponible + 1
+          die
+        ] ;; 20% risk of dying if no instensive care slot
+      ]
+      [
+        if ( random 100 > 20 )
+        [
+          set deaths deaths + 1
+          die
+        ]
+      ] ;; 80% risk of dying if no slot in hospital
+    ]
     [ set count-time count-time + 1 ]
-  ] ;; 20% de chance de mourir en réanimation
+  ] ;; 20% risk of dying in intensive care
 end
 
 ;; controls the motion of the androids
 to androids-wander
-  ask sedentaires with [ grave? = false ] [
-    if (random 100 > 98) [ setxy random-pxcor random-pycor ] ;; Une personne a 1% de chance de voyager
-    if (patch-here = work) [ set workdone? true ] ;; Allez retour de l'agent de maison, travail
-    if (patch-here = house) [ set workdone? false ]
-    ifelse (workdone?) [ face house ][face work ] ;; Direction a prendre de l'agent
+  ask sedentaires with [ grave? = false ]
+  [
+    ;; 1% probability to go abroad
+    if ( random 100 > 98 )
+    [ setxy random-pxcor random-pycor ]
+
+    ;; Commuting back to home
+    if ( patch-here = work )
+    [ set workdone? true ]
+
+    ;; Commuting to work
+    if ( patch-here = house )
+    [ set workdone? false ]
+
+    ;; face direction
+    ifelse ( workdone? )
+    [ face house ]
+    [ face work ]
     fd 1
   ]
 
-  ask routiers with [ grave? = false ] [
-    if ( road-done = 5 ) [ rt (random 180) - 90 set road-done 0 ]
+  ask routiers with [ grave? = false ]
+  [
+    if ( road-done = 5 )
+    [
+      rt (random 180) - 90
+      set road-done 0
+    ]
     set road-done road-done + 1
     fd 1
   ]
@@ -236,25 +288,32 @@ end
 
 to spread-disease ;; turtle procedure
   ask one-of other turtles-here [ maybe-get-sick ]
-
-  ask patch-here [ if (random 100 > 50) [ set germes? true set germes 100 set dying-time 0 ] ]
+  ask patch-here
+  [
+    if ( random 100 > 50 )
+    [
+      set germes? true
+      set germes 100
+      set dying-time 0
+    ]
+  ]
 end
 
 to spread-disease-patch ;; patch procedure
-  if (random 100 > germes / 2) [ ;; Si une tortue touche une surface, il va être infecté, dépend du taux de germes.
-  ask turtles-here [ maybe-get-sick ]
-  ]
+  ;; if a turtle touches a surface, then it'll be infected, depending on germ rate
+  if ( random 100 > germes / 2 )
+  [ ask turtles-here [ maybe-get-sick ] ]
 end
 
 to maybe-get-sick ;; turtle procedure
   ;; roll the dice and maybe get sick
-  if (not malade?) and (random 100 < infection-chance)
-    [ get-sick ]
+  if ( not malade? ) and ( random 100 < infection-chance )
+  [ get-sick ]
 end
 
 ;; set the appropriate variables to make this turtle sick
 to get-sick ;; turtle procedure
-  if not malade? and not incubation? and not grave? and not immunise?
+  if ( not malade? ) and ( not incubation? ) and ( not grave? ) and ( not immunise? )
   [ set incubation? true ]
 end
 
