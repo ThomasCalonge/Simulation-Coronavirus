@@ -16,7 +16,8 @@ globals
   deaths
 ]
 
-breed [ androids android ]
+breed [ sedentaires sedentaire ]
+breed [ routiers routier ]
 
 ;; patches variables
 patches-own
@@ -26,17 +27,23 @@ patches-own
   germes ;; from 0-100 germs spread on a patch.
 ]
 
-;; androids variables
+;; turtles variables
 turtles-own
 [
-  house ;; all turtles spawn at his house
-  work ;; his work is at a random radius between 3-20 patches away
-
   count-time ;; turtles own timer for incubating, sick or dying.
+  reanimation? ;; whether turtle have access to a bed in hospital (true/false)
   incubation? ;; whether turtle is incubating (true/false)
   malade?    ;; whether turtle is sick (true/false)
   grave?     ;; whether turtle needs reanimation (true/false)
   immunise?  ;; whether turtle  is immune to the sickness (true/false)
+]
+sedentaires-own [
+  workdone? ;; if the turtle has been to work or replenish to house
+  house ;; all turtles spawn at his house
+  work ;; his work is at a random radius between 3-20 patches away
+]
+routiers-own [
+  road-done ;; whenever an agent has done 5 tick, he change his orientation
 ]
 
 ;;;;;;;;;;;;;;;;;;;;;
@@ -60,20 +67,22 @@ to setup-keep
 end
 
 to setup-world
-  set-default-shape androids "android"
+  set-default-shape turtles "android"
   set num-sick 0
   set delay 0
   ask patches [ set germes? false ]
-  create-some-androids
+  create-population
+  set nb-place-disponible max-hopital
   reset-ticks
 end
 
 to infect
-  ask one-of androids [ get-sick ]
+  ask one-of turtles [ get-sick ]
 end
 
-to create-some-androids
-  create-androids num-androids
+to create-population
+
+  create-sedentaires num-population * 0.8
   [
     let x random-pxcor
     let y random-pycor
@@ -81,7 +90,28 @@ to create-some-androids
     setxy x y ;; put androids on patch centers
 
     set house patch-here
-    set work patch-at (x + (random 17) + 3) (y + (random 17) + 3)
+    set work one-of patches in-radius ((random 17) + 3)
+
+    set color gray
+
+    ;; start value
+    set count-time 0
+
+    ;; all boolean value to false, means the agent is sane
+    set malade? false
+    set incubation? false
+    set grave? false
+    set immunise? false
+    set reanimation? false
+    set workdone? false
+  ]
+
+  create-routiers num-population * 0.2
+  [
+    let x random-pxcor
+    let y random-pycor
+
+    setxy x y ;; put androids on patch centers
 
     set color gray
     set heading 90 * random 4
@@ -93,6 +123,7 @@ to create-some-androids
     set malade? false
     set incubation? false
     set grave? false
+    set reanimation? false
     set immunise? false
   ]
 end
@@ -113,24 +144,26 @@ to go
   sickness-evolution
   androids-wander
 
+  ask turtles with [ incubation? and count-time > 80 ] ;; Les gens ayant le virus incubé crachent aussi leurs poumons
+    [ spread-disease ]
   ask turtles with [ malade? ] ;; Les malades crachent leurs poumons sur les surfaces
     [ spread-disease ]
   ask patches with [ germes? ] ;; Les germes sur la surface
     [ spread-disease-patch ]
 
   set num-sick count turtles with [ malade? ]
-  set nb-place-disponible max-hopital - count turtles with [ grave? ]
+
   tick
 end
 
 to change-color ;; Gère la couleur de chaque objet
-  ask androids with [ immunise? ]
+  ask turtles with [ immunise? ]
   [ set color blue ]
-  ask androids with [ incubation? ]
+  ask turtles with [ incubation? ]
   [ set color white ]
-  ask androids with [ malade? ]
+  ask turtles with [ malade? ]
   [ set color green ]
-  ask androids with [ grave? ]
+  ask turtles with [ grave? ]
   [ set color red ]
   ask patches with [ germes? ]
   [ set pcolor 51 ]
@@ -141,55 +174,69 @@ end
 to sickness-evolution
   ask patches with [ germes? ] [
     if ( germes = 0 ) [ set germes? false ]
-    set dying-time (dying-time + 1) mod 10 ;; Chaque tick en temps qui va tuer le virus
-    if(dying-time = 0) [
+    set dying-time dying-time + 1 ;; Chaque tick en temps qui va tuer le virus
+    if(dying-time = 10) [
+      set dying-time 0
       set germes germes - 20
     ]
   ] ;; Les germes meurent en l'absence d'un organisme
 
-  ask androids with [ incubation? ] [
+  ask turtles with [ incubation? ] [
     ifelse(count-time = 140)
     [ set incubation? false set malade? true set count-time 0 ]
     [ set count-time count-time + 1 ]
   ] ;; incubation après un certain temps
 
-  ask androids with [ malade? ] [
+  ask turtles with [ malade? ] [
     if(count-time > 70) [set malade? false set immunise? true]
     ifelse(count-time = 70 and random 100 > 90) [
       set grave? true set malade? false set count-time 0]
     [ set count-time count-time + 1 ]
   ] ;; 10% de chance d'allez en réanimation
 
-  ask androids with [ grave? ] [
-    if (count-time > 40) [ set grave? false set immunise? true ]
-    ifelse(count-time = 40 and random 100 > 80)
-    [ set deaths deaths + 1 die ]
+  ask turtles with [ grave? ] [
+    if (count-time > 40) [ set grave? false set immunise? true stop  set nb-place-disponible nb-place-disponible + 1 ]
+
+    if (nb-place-disponible > 0 and reanimation? = false)[ set nb-place-disponible nb-place-disponible - 1 set reanimation? true ] ;; Il prend une place en réa
+
+    ifelse(count-time = 40) [
+      ifelse (reanimation?)
+      [
+        if(random 100 < 20)
+        [
+          set deaths deaths + 1 set nb-place-disponible nb-place-disponible + 1 die
+        ] ;; 20% de chance de mourir si place d'hôpital disponible
+      ]
+
+      [
+        if(random 100 > 20)[ set deaths deaths + 1 die ]
+      ] ;; 80% de chance de mourir sans place d'hôpital
+    ]
+
     [ set count-time count-time + 1 ]
   ] ;; 20% de chance de mourir en réanimation
 end
 
 ;; controls the motion of the androids
 to androids-wander
-  ask androids with [ grave? = false ]
-  [
-
-    ifelse avoid? and not malade?
-      [ avoid ] [ rt (random 4) * 90 ]
+  ask sedentaires with [ grave? = false ] [
     if (random 100 > 98) [ setxy random-pxcor random-pycor ] ;; Une personne a 1% de chance de voyager
+    if (patch-here = work) [ set workdone? true ] ;; Allez retour de l'agent de maison, travail
+    if (patch-here = house) [ set workdone? false ]
+    ifelse (workdone?) [ face house ][face work ] ;; Direction a prendre de l'agent
+    fd 1
   ]
-  ask androids [
+
+  ask routiers with [ grave? = false ] [
+    if ( road-done = 5 ) [ rt (random 180) - 90 set road-done 0 ]
+    set road-done road-done + 1
     fd 1
   ]
 end
 
-to avoid ;; android procedure
-  let candidates patches in-radius 1 with [ not any? turtles-here with [ malade? ] ]
-  ifelse any? candidates
-    [ face one-of candidates ]
-    [ rt (random 4) * 90 ]
-end
-
 to spread-disease ;; turtle procedure
+  ask one-of other turtles-here [ maybe-get-sick ]
+
   ask patch-here [ if (random 100 > 50) [ set germes? true set germes 100 set dying-time 0 ] ]
 end
 
@@ -211,8 +258,7 @@ to get-sick ;; turtle procedure
   [ set incubation? true ]
 end
 
-; Copyright 2005 Uri Wilensky.
-; See Info tab for full copyright and license.
+;; Projet de recherche M1 Informatique CILS, Guillaume COQUARD et Thomas CALONGE -- Année 2020
 @#$#@#$#@
 GRAPHICS-WINDOW
 245
@@ -259,10 +305,10 @@ NIL
 1
 
 BUTTON
-24
-114
-126
-147
+23
+115
+125
+148
 NIL
 go
 T
@@ -284,7 +330,7 @@ infection-chance
 infection-chance
 0
 100
-85.0
+88.0
 1
 1
 %
@@ -313,11 +359,11 @@ SLIDER
 10
 200
 43
-num-androids
-num-androids
+num-population
+num-population
 1
 10000
-5001.0
+10000.0
 1
 1
 NIL
@@ -333,27 +379,6 @@ num-sick
 0
 1
 11
-
-SWITCH
-65
-473
-168
-506
-avoid?
-avoid?
-0
-1
--1000
-
-TEXTBOX
-61
-449
-211
-467
-androids:
-11
-0.0
-0
 
 BUTTON
 24
@@ -393,10 +418,10 @@ clears old plots\n
 0
 
 SLIDER
-44
-529
-193
-562
+47
+449
+196
+482
 step-size
 step-size
 1
@@ -458,10 +483,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot nb-place-disponible"
 
 PLOT
-1084
-329
-1284
-479
+1232
+332
+1432
+482
 Nombre de mort
 NIL
 NIL
@@ -474,6 +499,24 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot deaths"
+
+PLOT
+1347
+107
+1603
+302
+Gens ayant besoin d'une réanimation
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot count turtles with [ grave? ]"
 
 @#$#@#$#@
 ## WHAT IS IT?
