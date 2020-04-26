@@ -14,6 +14,8 @@ globals
   delay
   nb-place-disponible
   deaths
+  ;; when the confinement is declared
+  confinement?
 ]
 
 breed [ sedentaires sedentaire ]
@@ -36,6 +38,7 @@ turtles-own
   malade?    ;; whether turtle is sick (true/false)
   grave?     ;; whether turtle needs reanimation (true/false)
   immunise?  ;; whether turtle  is immune to the sickness (true/false)
+  confiner? ;; whether turtle state is confined (true/false)
 ]
 sedentaires-own [
   workdone? ;; if the turtle has been to work or replenish to house
@@ -70,6 +73,7 @@ to setup-world
   set-default-shape turtles "android"
   set num-sick 0
   set delay 0
+  set confinement? false
   ask patches [ set germes? false ]
   create-population
   set nb-place-disponible max-hopital
@@ -79,6 +83,20 @@ end
 to infect
   ask one-of turtles [ get-sick ]
 end
+
+to confinement-population
+  repeat count sedentaires * 0.9 [
+    ask one-of sedentaires with [ confiner? = false ]
+    [ set confiner? true ]
+  ]
+end ;; methods to choose the turtles who will be confined
+
+to deconfinement-population
+  set confinement? false
+  ask sedentaires with [ confiner? = true ]
+  [ set confiner? false ]
+end ;; methods to choose the turtles who will be deconfined
+
 
 to create-population
   create-sedentaires num-population * 0.8
@@ -104,6 +122,8 @@ to create-population
     set immunise? false
     set reanimation? false
     set workdone? false
+
+    set confiner? false
   ]
 
   create-routiers num-population * 0.2
@@ -140,6 +160,16 @@ to go
   [ set delay delay + 1  ]
   if delay > 50
   [ stop ]
+
+  if (confinement = true) and (num-sick > num-population * ( %population-needed-to-start / 100)) and (confinement? = false) [
+    set confinement? true confinement-population
+  ] ;; the confinement begins
+
+  if (confinement = true) and (count turtles with [ immunise? ] > num-population * 0.9) and (confinement? = true) [
+    set confinement? false deconfinement-population
+  ] ;; the confinement begins
+
+
   ;; now for the main stuff;
   change-color
   sickness-evolution
@@ -147,7 +177,7 @@ to go
 
   ;; infected people spit their lungs on surfaces
   ask turtles with [ incubation? and count-time > 80 ] [ spread-disease ]
-  
+
   ;; sick people spit their lungs on surfaces
   ask turtles with [ malade? ] [ spread-disease ]
 
@@ -256,7 +286,7 @@ to androids-wander
   ask sedentaires with [ grave? = false ]
   [
     ;; 1% probability to go abroad
-    if ( random 100 > 98 )
+    if ( (random 100 > 98) and (confiner? = false))
     [ setxy random-pxcor random-pycor ]
 
     ;; Commuting back to home
@@ -268,10 +298,12 @@ to androids-wander
     [ set workdone? false ]
 
     ;; face direction
-    ifelse ( workdone? )
-    [ face house ]
-    [ face work ]
-    fd 1
+    ifelse ( workdone? and confiner? = false)
+    [ face house fd 1 ]
+    [ face work fd 1 ]
+
+    if (patch-here != house and confiner? = true)
+    [ face house fd 1 ]
   ]
 
   ask routiers with [ grave? = false ]
@@ -282,12 +314,15 @@ to androids-wander
       set road-done 0
     ]
     set road-done road-done + 1
-    fd 1
+    fd 3
   ]
 end
 
 to spread-disease ;; turtle procedure
-  ask one-of other turtles-here [ maybe-get-sick ]
+  if ( confinement? = false ) [
+    ask one-of turtles-here [ maybe-get-sick ]
+  ]
+
   ask patch-here
   [
     if ( random 100 > 50 )
@@ -307,7 +342,7 @@ end
 
 to maybe-get-sick ;; turtle procedure
   ;; roll the dice and maybe get sick
-  if ( not malade? ) and ( random 100 < infection-chance )
+  if ( not malade? ) and ( random 100 < infection-chance ) and confiner? = false
   [ get-sick ]
 end
 
@@ -389,7 +424,7 @@ infection-chance
 infection-chance
 0
 100
-88.0
+80.0
 1
 1
 %
@@ -509,10 +544,10 @@ NIL
 0
 
 SLIDER
-1063
-34
-1235
-67
+1104
+42
+1276
+75
 max-hopital
 max-hopital
 100
@@ -542,10 +577,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot nb-place-disponible"
 
 PLOT
-1232
-332
-1432
-482
+1097
+506
+1297
+656
 Nombre de mort
 NIL
 NIL
@@ -560,10 +595,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot deaths"
 
 PLOT
-1347
-107
-1603
-302
+1065
+305
+1321
+500
 Gens ayant besoin d'une réanimation
 NIL
 NIL
@@ -576,6 +611,61 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot count turtles with [ grave? ]"
+
+MONITOR
+62
+497
+180
+542
+Number Incubating
+count turtles with [ incubation? ]
+17
+1
+11
+
+SWITCH
+65
+754
+189
+787
+confinement
+confinement
+0
+1
+-1000
+
+PLOT
+12
+548
+236
+724
+Number Incubating
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot count turtles with [ incubation? ]"
+
+SLIDER
+16
+799
+243
+832
+%population-needed-to-start
+%population-needed-to-start
+1
+100
+3.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
