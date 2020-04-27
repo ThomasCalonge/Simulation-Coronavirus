@@ -101,16 +101,25 @@ end ;; methods to choose the turtles who will be confined
 
 to deconfinement-population
   set only-once true
-
-  set delay-deconfinement 0
-  ask sedentaires with [ confiner? = true ]
-  [ set confiner? false ]
+  set delay-deconfinement 1
 
   repeat num-population * (%population-with-mask / 100) [
     ask one-of turtles with [ masque? = false ] [ set masque? true ]
   ]
-end ;; methods to choose the turtles who will be deconfined
+end ;; setup the deconfinement, and put mask on people
 
+to deconfinement-population-progressive
+  if (delay-deconfinement mod (7 * 12) = 0) ;; day multiplied by the tick needed for a day
+  [
+
+    repeat count turtles with [ confiner? ] * (%population-deconfined-per-week / 100) [
+      ifelse (count turtles with [ confiner? ] > 0) [
+        ask one-of turtles with [ confiner? and not malade? ] [ set confiner? false ]
+      ]
+      [ stop ]
+    ]
+  ]
+end
 
 to create-population
   create-sedentaires num-population * 0.95
@@ -195,7 +204,9 @@ to go
   [ stop ]
 
 
-  if (confinement? = true) [ set delay-deconfinement delay-deconfinement + 1 ]
+  if (confinement? = true or only-once) [ set delay-deconfinement delay-deconfinement + 1 ]
+
+  if only-once [ deconfinement-population-progressive ]
 
   if confinement and (delay-deconfinement > j-deconfinement * 12) and confinement? and not only-once [ ;; 12 means there is twelve ticks for a full day.
     set confinement? false deconfinement-population
@@ -677,7 +688,7 @@ SWITCH
 787
 confinement
 confinement
-0
+1
 1
 -1000
 
@@ -708,7 +719,7 @@ SLIDER
 %population-needed-to-start
 0
 10
-0.511
+0.5
 0.001
 1
 NIL
@@ -723,7 +734,7 @@ j-deconfinement
 j-deconfinement
 1
 120
-60.0
+30.0
 1
 1
 NIL
@@ -738,7 +749,7 @@ taux-desobeissance
 taux-desobeissance
 0
 100
-85.0
+10.0
 1
 1
 NIL
@@ -775,7 +786,7 @@ SLIDER
 %population-with-mask
 0
 100
-80.0
+50.0
 1
 1
 NIL
@@ -788,6 +799,32 @@ MONITOR
 772
 Population ayant un masque
 count turtles with [ masque? ]
+17
+1
+11
+
+SLIDER
+300
+840
+542
+873
+%population-deconfined-per-week
+%population-deconfined-per-week
+1
+100
+10.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+849
+798
+1015
+843
+Jours depuis le confinement
+int (delay-deconfinement / 12)
 17
 1
 11
