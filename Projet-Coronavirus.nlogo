@@ -93,7 +93,7 @@ to infect
 end
 
 to confinement-population
-  repeat count sedentaires * 0.97 [
+  repeat count sedentaires * 0.9 [
     ask one-of sedentaires with [ confiner? = false ]
     [ set confiner? true ]
   ]
@@ -137,7 +137,7 @@ to create-population
     set immunise? false
     set reanimation? false
     set workdone? false
-
+    ;; confinement relate boolean value.
     set masque? false
     set confiner? false
 
@@ -339,6 +339,11 @@ to androids-wander
 
     if (patch-here != house and confiner? = true)
     [ face house fd 1 ]
+
+    if ( confiner? and ticks mod 5 = 0 and patch-here = house and rebel? ) [ ;; Si un citoyen est ne respect pas le confinement, alors il va se promener autour de sa maison
+      rt 45 * random 8
+      fd 1
+    ]
   ]
 
   ask routiers with [ grave? = false ]
@@ -356,7 +361,10 @@ end
 to spread-disease ;; turtle procedure
   if ( confinement? = false or rebel? ) [ ;; Neighbors talking face-to-face
     if masque? and random 100 > 2 [ stop ] ;; if the turtle has a mask, only 2% chance of spreading germs.
-    ask one-of turtles-here [ maybe-get-sick ]
+    if (random 100 < 20 ) ;; 20% for an encounter between two turtles.
+      [
+        if (count other turtles-here != 0) [ask one-of other turtles-here [ maybe-get-sick ] ]
+    ]
   ]
 
   if masque? and random 100 > 2 [ stop ] ;; if the turtle has a mask, only 2% chance of spreading germs.
@@ -495,7 +503,7 @@ num-population
 num-population
 1
 10000
-10000.0
+5000.0
 1
 1
 NIL
@@ -590,7 +598,7 @@ max-hopital
 max-hopital
 10
 1000
-10.0
+50.0
 10
 1
 NIL
@@ -668,7 +676,7 @@ SWITCH
 787
 confinement
 confinement
-0
+1
 1
 -1000
 
@@ -766,7 +774,7 @@ SLIDER
 %population-with-mask
 0
 100
-50.0
+0.0
 1
 1
 NIL
