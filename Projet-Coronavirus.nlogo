@@ -107,7 +107,7 @@ to deconfinement-population
   [ set confiner? false ]
 
   repeat num-population * (%population-with-mask / 100) [
-    ask turtles with [ masque? = false ] [ set masque? true ]
+    ask one-of turtles with [ masque? = false ] [ set masque? true ]
   ]
 end ;; methods to choose the turtles who will be deconfined
 
@@ -321,7 +321,7 @@ to androids-wander
   ask sedentaires with [ grave? = false ]
   [
     ;; 1% probability to go abroad
-    if ( (random 100 > 98) and (confiner? = false))
+    if ( (random 100 > 98) and (confiner? = false) and (ticks mod 20 = 0))
     [ setxy random-pxcor random-pycor ]
 
     ;; Commuting back to home
@@ -333,14 +333,15 @@ to androids-wander
     [ set workdone? false ]
 
     ;; face direction
-    ifelse ( workdone? and confiner? = false)
+    ifelse ( workdone? and not confiner?)
     [ face house fd 1 ]
     [ face work fd 1 ]
 
-    if (patch-here != house and confiner? = true)
-    [ face house fd 1 ]
+    ;; returns home
+    if (patch-here != house and confiner?)
+    [ move-to house]
 
-    if ( confiner? and ticks mod 5 = 0 and patch-here = house and rebel? ) [ ;; Si un citoyen est ne respect pas le confinement, alors il va se promener autour de sa maison
+    if ( confiner? and (ticks mod 5 = 0) and (patch-here = house) and rebel? ) [ ;; Si un citoyen est ne respect pas le confinement, alors il va se promener autour de sa maison
       rt 45 * random 8
       fd 1
     ]
@@ -401,9 +402,9 @@ end
 ;; Projet de recherche M1 Informatique CILS, Guillaume COQUARD et Thomas CALONGE -- Année 2020
 @#$#@#$#@
 GRAPHICS-WINDOW
-245
+251
 10
-1024
+1030
 790
 -1
 -1
@@ -503,7 +504,7 @@ num-population
 num-population
 1
 10000
-5000.0
+10000.0
 1
 1
 NIL
@@ -676,7 +677,7 @@ SWITCH
 787
 confinement
 confinement
-1
+0
 1
 -1000
 
@@ -722,7 +723,7 @@ j-deconfinement
 j-deconfinement
 1
 120
-30.0
+60.0
 1
 1
 NIL
@@ -737,7 +738,7 @@ taux-desobeissance
 taux-desobeissance
 0
 100
-10.0
+85.0
 1
 1
 NIL
@@ -774,7 +775,7 @@ SLIDER
 %population-with-mask
 0
 100
-0.0
+80.0
 1
 1
 NIL
