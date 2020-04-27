@@ -16,6 +16,9 @@ globals
   deaths
   ;; when the confinement is declared
   confinement?
+  delay-deconfinement
+  ;; boolean value to check if we already confined,deconfined the population.
+  only-once
 ]
 
 breed [ sedentaires sedentaire ]
@@ -32,6 +35,9 @@ patches-own
 ;; turtles variables
 turtles-own
 [
+  rebel?;; turtles can be a rebel ;)
+  masque? ;; whether the turtle has a mask (true/false)
+
   count-time ;; turtles own timer for incubating, sick or dying.
   reanimation? ;; whether turtle have access to a bed in hospital (true/false)
   incubation? ;; whether turtle is incubating (true/false)
@@ -73,6 +79,8 @@ to setup-world
   set-default-shape turtles "android"
   set num-sick 0
   set delay 0
+  set delay-deconfinement 0
+  set only-once false
   set confinement? false
   ask patches [ set germes? false ]
   create-population
@@ -85,21 +93,27 @@ to infect
 end
 
 to confinement-population
-  repeat count sedentaires * 0.9 [
+  repeat count sedentaires * 0.97 [
     ask one-of sedentaires with [ confiner? = false ]
     [ set confiner? true ]
   ]
 end ;; methods to choose the turtles who will be confined
 
 to deconfinement-population
-  set confinement? false
+  set only-once true
+
+  set delay-deconfinement 0
   ask sedentaires with [ confiner? = true ]
   [ set confiner? false ]
+
+  repeat num-population * (%population-with-mask / 100) [
+    ask turtles with [ masque? = false ] [ set masque? true ]
+  ]
 end ;; methods to choose the turtles who will be deconfined
 
 
 to create-population
-  create-sedentaires num-population * 0.8
+  create-sedentaires num-population * 0.95
   [
     let x random-pxcor
     let y random-pycor
@@ -108,7 +122,8 @@ to create-population
     setxy x y
 
     set house patch-here
-    set work one-of patches in-radius ((random 17) + 3)
+    set work one-of patches in-radius ((random 17)
+      + 3)
 
     set color gray
 
@@ -123,10 +138,18 @@ to create-population
     set reanimation? false
     set workdone? false
 
+    set masque? false
     set confiner? false
+
+    ifelse(random 100 < taux-desobeissance) [
+      set rebel? true
+    ]
+    [
+      set rebel? false
+    ]
   ]
 
-  create-routiers num-population * 0.2
+  create-routiers num-population * 0.05
   [
     let x random-pxcor
     let y random-pycor
@@ -146,6 +169,16 @@ to create-population
     set grave? false
     set reanimation? false
     set immunise? false
+
+    set confiner? false
+    set masque? false
+
+    ifelse(random 100 < taux-desobeissance) [
+      set rebel? true
+    ]
+    [
+      set rebel? false
+    ]
   ]
 end
 
@@ -161,14 +194,16 @@ to go
   if delay > 50
   [ stop ]
 
-  if (confinement = true) and (num-sick > num-population * ( %population-needed-to-start / 100)) and (confinement? = false) [
+
+  if (confinement? = true) [ set delay-deconfinement delay-deconfinement + 1 ]
+
+  if confinement and (delay-deconfinement > j-deconfinement * 12) and confinement? and not only-once [ ;; 12 means there is twelve ticks for a full day.
+    set confinement? false deconfinement-population
+  ] ;; the deconfinement begins
+
+  if confinement and (num-sick > num-population * ( %population-needed-to-start / 100)) and not confinement? and not only-once [
     set confinement? true confinement-population
   ] ;; the confinement begins
-
-  if (confinement = true) and (count turtles with [ immunise? ] > num-population * 0.9) and (confinement? = true) [
-    set confinement? false deconfinement-population
-  ] ;; the confinement begins
-
 
   ;; now for the main stuff;
   change-color
@@ -207,7 +242,7 @@ to sickness-evolution
     ;; germ is aging
     set dying-time dying-time + 1
     ;; germs die outside an host
-    if(dying-time = 10)
+    if(dying-time = 2)
     [
       set dying-time 0
       set germes germes - 20
@@ -319,10 +354,12 @@ to androids-wander
 end
 
 to spread-disease ;; turtle procedure
-  if ( confinement? = false ) [
+  if ( confinement? = false or rebel? ) [ ;; Neighbors talking face-to-face
+    if masque? and random 100 > 2 [ stop ] ;; if the turtle has a mask, only 2% chance of spreading germs.
     ask one-of turtles-here [ maybe-get-sick ]
   ]
 
+  if masque? and random 100 > 2 [ stop ] ;; if the turtle has a mask, only 2% chance of spreading germs.
   ask patch-here
   [
     if ( random 100 > 50 )
@@ -332,6 +369,7 @@ to spread-disease ;; turtle procedure
       set dying-time 0
     ]
   ]
+
 end
 
 to spread-disease-patch ;; patch procedure
@@ -424,7 +462,7 @@ infection-chance
 infection-chance
 0
 100
-80.0
+50.0
 1
 1
 %
@@ -449,9 +487,9 @@ PENS
 "default" 1.0 0 -16777216 true "" ""
 
 SLIDER
-21
+24
 10
-200
+203
 43
 num-population
 num-population
@@ -550,9 +588,9 @@ SLIDER
 75
 max-hopital
 max-hopital
-100
-10000
-100.0
+10
+1000
+10.0
 10
 1
 NIL
@@ -653,19 +691,97 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot count turtles with [ incubation? ]"
 
 SLIDER
-16
-799
-243
-832
+18
+800
+346
+833
 %population-needed-to-start
 %population-needed-to-start
+0
+10
+0.511
+0.001
 1
-100
-3.0
+NIL
+HORIZONTAL
+
+SLIDER
+366
+801
+538
+834
+j-deconfinement
+j-deconfinement
+1
+120
+30.0
 1
 1
 NIL
 HORIZONTAL
+
+SLIDER
+559
+803
+731
+836
+taux-desobeissance
+taux-desobeissance
+0
+100
+10.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+747
+797
+834
+842
+NIL
+confinement?
+17
+1
+11
+
+MONITOR
+1087
+670
+1310
+715
+Population non-confiner
+count turtles with [ confiner? = false ]
+17
+1
+11
+
+SLIDER
+556
+841
+736
+874
+%population-with-mask
+%population-with-mask
+0
+100
+50.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+1106
+727
+1284
+772
+Population ayant un masque
+count turtles with [ masque? ]
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
