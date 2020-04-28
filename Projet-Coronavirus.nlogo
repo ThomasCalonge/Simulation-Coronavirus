@@ -21,6 +21,9 @@ globals
   only-once
 
   ticks-a-day ;; constant value to define how many ticks is a full day.
+  debut-croissance? ;; when the confinement starts, all values are growing up.
+
+  nb-lit-croissant ;; used for both the plot and the nb-lit-disponible
 ]
 
 breed [ sedentaires sedentaire ]
@@ -83,6 +86,7 @@ end
 to setup-world
   ;; All values to 0.
   set-default-shape turtles "android"
+  set debut-croissance? false
   set num-sick 0
   set delay 0
   set delay-deconfinement 0
@@ -101,6 +105,12 @@ to infect
 end
 
 to confinement-population
+  set delay-deconfinement 0
+
+  if (only-once and stop-and-go?) [
+    ask turtles with [ confiner? ] [ set confiner? false ]
+  ] ;; reset number of confined in model stop and go.
+
   repeat count sedentaires * 0.9 [
     ask one-of sedentaires with [ confiner? = false ]
     [ set confiner? true ]
@@ -108,12 +118,14 @@ to confinement-population
 end ;; methods to choose the turtles who will be confined
 
 to deconfinement-population
-  set only-once true
-  set delay-deconfinement 1
-
-  repeat num-population * (%population-with-mask / 100) [
-    ask one-of turtles with [ masque? = false ] [ set masque? true ]
+  if (not only-once) [
+    repeat num-population * (%population-with-mask / 100) [
+      ask one-of turtles with [ masque? = false ] [ set masque? true ]
+    ]
   ]
+
+  set only-once true
+  set delay-deconfinement 0
 end ;; setup the deconfinement, and put mask on people
 
 to deconfinement-population-progressive
@@ -205,6 +217,38 @@ to create-population
   ]
 end
 
+to croissance
+
+  if(only-once) [
+    let nb-mask count turtles with [ not masque? ]
+    if nb-mask > 0 [
+      repeat nb-mask * (%croissance-mask / 100) [
+        if (count turtles with [ not masque? ] > 0) [
+          ask one-of turtles with [ not masque? ] [ set masque? true ]
+        ]
+      ]
+    ]
+  ]
+  ;; Croissance du port du masque
+
+  set nb-lit-croissant nb-lit-croissant + (max-hopital * (%croissance-lit-reanimation / 100)) ;; used for the plot
+
+  let nb-lit-suppl (max-hopital * (%croissance-lit-reanimation / 100))
+  set nb-place-disponible nb-place-disponible + nb-lit-suppl
+  ;; Croissance des lit d'hopitaux
+
+  let nb-rebels count turtles with [ rebel? ]
+  if nb-rebels > 0 [
+    repeat nb-rebels * (%decroissance-desobeissance / 100) [
+      if (count turtles with [ rebel? ] > 0) [
+        ask one-of turtles with [ rebel? ] [ set rebel? false ]
+      ]
+    ]
+  ]
+  ;; Decroissance des gens desobeissant
+
+end
+
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;; Runtime Functions ;;
 ;;;;;;;;;;;;;;;;;;;;;;;
@@ -217,18 +261,23 @@ to go
   if delay > 50
   [ stop ]
 
+  if (debut-croissance? and ticks mod (7 * ticks-a-day) = 0) [
+    croissance
+  ] ;; each week, there an increase values of things, we are not in a static model.
+
+  if (only-once and not confinement?) [ deconfinement-population-progressive ]
 
   if (confinement? = true or only-once) [ set delay-deconfinement delay-deconfinement + 1 ]
 
-  if only-once [ deconfinement-population-progressive ]
-
-  if confinement and (delay-deconfinement > j-deconfinement * ticks-a-day) and confinement? and not only-once [ ;; ticks-a-day multiplied by the days needed for deconfinement.
+  if confinement and (delay-deconfinement > j-deconfinement * ticks-a-day) and confinement? and (not only-once or stop-and-go?) [ ;; ticks-a-day multiplied by the days needed for deconfinement.
     set confinement? false deconfinement-population
   ] ;; the deconfinement begins
 
-  if confinement and (num-sick > num-population * ( %population-needed-to-start / 100)) and not confinement? and not only-once [
+  if confinement and (num-sick * (%detected / 100) > num-population * ( %population-needed-to-start / 100)) and not confinement? and (not only-once or (stop-and-go? and delay-deconfinement > (j-stop-and-go * ticks-a-day))) [
+    set debut-croissance? true
     set confinement? true confinement-population
   ] ;; the confinement begins
+
 
   ;; now for the main stuff;
   change-color
@@ -316,26 +365,38 @@ to sickness-evolution
   ;; -----------------------------------
   ask turtles with [ grave? ]
   [
-    ifelse ( count-time mod (3 * ticks-a-day) = 0 and random 100 > chance-to-go)
+
+    let is-day? (count-time mod ticks-a-day) = 0
+    let is-three-days? (count-time mod (ticks-a-day * 3)) = 0
+
+    if (is-three-days?) [
+      ifelse (random 100 < chance-to-go)
     [
       if (reanimation?) [
         set nb-place-disponible nb-place-disponible + 1
         set reanimation? false
       ]
+
       set grave? false
-      set immunise? true stop
+      set immunise? true
+
+      stop
     ]
+
     [
       ifelse (reanimation?) [
         set chance-to-go chance-to-go + 15
       ]
+
       [
         set chance-to-go chance-to-go + 5
       ]
     ]
+    ]
+
 
     ;; taking one intensive care slot
-    if ( nb-place-disponible > 0 and reanimation? = false )
+    if ( nb-place-disponible > 0 and not reanimation?)
     [
       set chance-to-die 5
       set chance-to-go 35
@@ -343,32 +404,36 @@ to sickness-evolution
       set reanimation? true
     ]
 
-    ifelse ( count-time mod ticks-a-day = 0 )
+    if ( is-three-days? )
     [
-      ifelse ( reanimation? and count-time mod (3 * ticks-a-day) = 0 )
+      ifelse (reanimation?)
       [
+
         ifelse ( random 100 < chance-to-die )
         [
           set deaths deaths + 1
           set nb-place-disponible nb-place-disponible + 1
+
           die
         ] ;; 5% risk of dying if the agent as an instensive care slot
+
         [
           set chance-to-die chance-to-die + 5
         ]
       ]
       [
         ifelse ( random 100 < chance-to-die )
-        [
-          set deaths deaths + 1
-          die
+          [
+            set deaths deaths + 1
+
+            die
         ]
         [
           set chance-to-die chance-to-die + 15
         ]
-      ] ;; 35% increasing by the time, chance of risk of dying if no slot in hospital
-    ]
-    [ set count-time count-time + 1 ]
+      ]
+    ] ;; 35% increasing by the time, chance of risk of dying if no slot in hospital
+    set count-time count-time + 1
   ] ;; 20% risk of dying in intensive care
 end
 
@@ -416,7 +481,7 @@ to androids-wander
 end
 
 to spread-disease ;; turtle procedure
-  if masque? and random 100 > 2 [ stop ] ;; if the turtle has a mask, only 2% chance of spreading germs.
+  if masque? and random 100 < %impact-of-mask [ stop ] ;; if the turtle has a mask, %chance of impact-of-mask.
 
   if ( confinement? = false or rebel? ) [ ;; Neighbors talking face-to-face
     if (random 100 < 20 ) ;; 20% for an encounter between two turtles.
@@ -655,7 +720,7 @@ max-hopital
 max-hopital
 10
 1000
-50.0
+10.0
 10
 1
 NIL
@@ -680,10 +745,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot nb-place-disponible"
 
 PLOT
-1097
-506
-1297
-656
+1065
+507
+1319
+694
 Nombre de mort
 NIL
 NIL
@@ -714,6 +779,7 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot count turtles with [ grave? ]"
+"pen-1" 1.0 0 -5298144 true "" "plot max-hopital + nb-lit-croissant"
 
 MONITOR
 62
@@ -733,7 +799,7 @@ SWITCH
 787
 confinement
 confinement
-1
+0
 1
 -1000
 
@@ -779,7 +845,7 @@ j-deconfinement
 j-deconfinement
 1
 120
-60.0
+50.0
 1
 1
 NIL
@@ -794,7 +860,7 @@ taux-desobeissance
 taux-desobeissance
 0
 100
-10.0
+30.0
 1
 1
 NIL
@@ -812,10 +878,10 @@ confinement?
 11
 
 MONITOR
-1087
-670
-1310
-715
+1082
+714
+1305
+759
 Population non-confiner
 count turtles with [ confiner? = false ]
 17
@@ -831,17 +897,17 @@ SLIDER
 %population-with-mask
 0
 100
-50.0
+40.0
 1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-1106
-727
-1284
-772
+1100
+770
+1278
+815
 Population ayant un masque
 count turtles with [ masque? ]
 17
@@ -857,6 +923,140 @@ SLIDER
 %population-deconfined-per-week
 1
 100
+25.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+848
+796
+1014
+841
+Jours depuis le confinement
+int (delay-deconfinement / 12)
+17
+1
+11
+
+SLIDER
+119
+839
+291
+872
+%impact-of-mask
+%impact-of-mask
+0
+100
+93.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+1098
+823
+1282
+868
+Gens étant dans un état grave
+count turtles with [ grave? ]
+17
+1
+11
+
+SLIDER
+797
+844
+969
+877
+%detected
+%detected
+0
+100
+100.0
+1
+1
+NIL
+HORIZONTAL
+
+SWITCH
+1488
+43
+1617
+76
+stop-and-go?
+stop-and-go?
+0
+1
+-1000
+
+MONITOR
+1419
+90
+1680
+135
+Population nécessaire pour débuter le confinement
+num-population * ( %population-needed-to-start / 100)
+17
+1
+11
+
+SLIDER
+1469
+145
+1641
+178
+j-stop-and-go
+j-stop-and-go
+1
+31
+14.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1471
+217
+1643
+250
+%croissance-mask
+%croissance-mask
+0
+100
+10.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1471
+257
+1690
+290
+%decroissance-desobeissance
+%decroissance-desobeissance
+0
+100
+10.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1471
+294
+1674
+327
+%croissance-lit-reanimation
+%croissance-lit-reanimation
+0
+100
 10.0
 1
 1
@@ -864,12 +1064,12 @@ NIL
 HORIZONTAL
 
 MONITOR
-849
-798
-1015
-843
-Jours depuis le confinement
-int (delay-deconfinement / 12)
+1301
+793
+1373
+838
+Gens rebel
+count turtles with [ rebel? ]
 17
 1
 11
