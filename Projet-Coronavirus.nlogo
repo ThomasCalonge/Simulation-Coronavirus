@@ -19,6 +19,8 @@ globals
   delay-deconfinement
   ;; boolean value to check if we already confined,deconfined the population.
   only-once
+
+  ticks-a-day ;; constant value to define how many ticks is a full day.
 ]
 
 breed [ sedentaires sedentaire ]
@@ -45,6 +47,9 @@ turtles-own
   grave?     ;; whether turtle needs reanimation (true/false)
   immunise?  ;; whether turtle  is immune to the sickness (true/false)
   confiner? ;; whether turtle state is confined (true/false)
+
+  chance-to-die ;; if the turtle is in reanimation, the chances are increasing without it.
+  chance-to-go ;; each 3 days, the chance to go for the turtle are increasing.
 ]
 sedentaires-own [
   workdone? ;; if the turtle has been to work or replenish to house
@@ -76,6 +81,7 @@ to setup-keep
 end
 
 to setup-world
+  ;; All values to 0.
   set-default-shape turtles "android"
   set num-sick 0
   set delay 0
@@ -83,6 +89,8 @@ to setup-world
   set only-once false
   set confinement? false
   ask patches [ set germes? false ]
+
+  set ticks-a-day 12
   create-population
   set nb-place-disponible max-hopital
   reset-ticks
@@ -109,7 +117,7 @@ to deconfinement-population
 end ;; setup the deconfinement, and put mask on people
 
 to deconfinement-population-progressive
-  if (delay-deconfinement mod (7 * 12) = 0) ;; day multiplied by the tick needed for a day
+  if (delay-deconfinement mod (7 * ticks-a-day) = 0) ;; day multiplied by the tick needed for a day
   [
 
     repeat count turtles with [ confiner? ] * (%population-deconfined-per-week / 100) [
@@ -137,7 +145,7 @@ to create-population
     set color gray
 
     ;; start value
-    set count-time 0
+    set count-time 1
 
     ;; all boolean value to false, means the agent is sane
     set malade? false
@@ -149,6 +157,9 @@ to create-population
     ;; confinement relate boolean value.
     set masque? false
     set confiner? false
+
+    set chance-to-die 35
+    set chance-to-go 10
 
     ifelse(random 100 < taux-desobeissance) [
       set rebel? true
@@ -170,7 +181,7 @@ to create-population
     set heading 90 * random 4
 
     ;; start value
-    set count-time 0
+    set count-time 1
 
     ;; all boolean value to false, means the agent is sane
     set malade? false
@@ -181,6 +192,9 @@ to create-population
 
     set confiner? false
     set masque? false
+
+    set chance-to-die 35
+    set chance-to-go 10
 
     ifelse(random 100 < taux-desobeissance) [
       set rebel? true
@@ -208,7 +222,7 @@ to go
 
   if only-once [ deconfinement-population-progressive ]
 
-  if confinement and (delay-deconfinement > j-deconfinement * 12) and confinement? and not only-once [ ;; 12 means there is twelve ticks for a full day.
+  if confinement and (delay-deconfinement > j-deconfinement * ticks-a-day) and confinement? and not only-once [ ;; ticks-a-day multiplied by the days needed for deconfinement.
     set confinement? false deconfinement-population
   ] ;; the deconfinement begins
 
@@ -260,68 +274,99 @@ to sickness-evolution
     ]
   ]
 
+  ;; -----------------------------------
+  ;; -- PROCEDURE WHEN IN INCUBATION  --
+  ;; -----------------------------------
+
   ;; incubation after an elpased time
   ask turtles with [ incubation? ]
   [
-    ifelse ( count-time = 140 )
+    ifelse ( count-time mod (14 * ticks-a-day) = 0 )
     [
       set incubation? false
       set malade? true
-      set count-time 0
+      set count-time 1
     ]
     [ set count-time count-time + 1 ]
   ]
 
+  ;; -----------------------------------
+  ;; --   PROCEDURE WHEN IN SICKNESS  --
+  ;; -----------------------------------
+
   ask turtles with [ malade? ]
   [
-    if ( count-time > 70 )
+    if ( count-time mod (7 * ticks-a-day) = 0)
     [
       set malade? false
       set immunise? true
     ]
-    ifelse ( count-time = 70 and random 100 > 90 )
+    ifelse ( (count-time mod ticks-a-day = 0) and random 100 < 1 ) ;; Tous les 12 ticks (1 journée), l'agent tire un jet aléatoire il a 1% de chance d'allez en réanimation.
     [
       set grave? true
       set malade? false
-      set count-time 0
+      set count-time 1
     ]
     [ set count-time count-time + 1 ]
-  ] ;; 10% risk to get in intensive care
+  ] ;; 5% risk to get in intensive care
 
+
+  ;; -----------------------------------
+  ;; -- PROCEDURE WHEN IN REANIMATION --
+  ;; -----------------------------------
   ask turtles with [ grave? ]
   [
-    if ( count-time > 40 )
+    ifelse ( count-time mod (3 * ticks-a-day) = 0 and random 100 > chance-to-go)
     [
+      if (reanimation?) [
+        set nb-place-disponible nb-place-disponible + 1
+        set reanimation? false
+      ]
       set grave? false
       set immunise? true stop
-      set nb-place-disponible nb-place-disponible + 1
+    ]
+    [
+      ifelse (reanimation?) [
+        set chance-to-go chance-to-go + 15
+      ]
+      [
+        set chance-to-go chance-to-go + 5
+      ]
     ]
 
     ;; taking one intensive care slot
     if ( nb-place-disponible > 0 and reanimation? = false )
     [
+      set chance-to-die 5
+      set chance-to-go 35
       set nb-place-disponible nb-place-disponible - 1
       set reanimation? true
     ]
 
-    ifelse ( count-time = 40 )
+    ifelse ( count-time mod ticks-a-day = 0 )
     [
-      ifelse ( reanimation? )
+      ifelse ( reanimation? and count-time mod (3 * ticks-a-day) = 0 )
       [
-        if ( random 100 < 20 )
+        ifelse ( random 100 < chance-to-die )
         [
           set deaths deaths + 1
           set nb-place-disponible nb-place-disponible + 1
           die
-        ] ;; 20% risk of dying if no instensive care slot
+        ] ;; 5% risk of dying if the agent as an instensive care slot
+        [
+          set chance-to-die chance-to-die + 5
+        ]
       ]
       [
-        if ( random 100 > 20 )
+        ifelse ( random 100 < chance-to-die )
         [
           set deaths deaths + 1
           die
         ]
-      ] ;; 80% risk of dying if no slot in hospital
+        [
+          set chance-to-die chance-to-die + 15
+        ]
+      ] ;; 35% increasing by the time, chance of risk of dying if no slot in hospital
     ]
     [ set count-time count-time + 1 ]
   ] ;; 20% risk of dying in intensive care
@@ -371,15 +416,15 @@ to androids-wander
 end
 
 to spread-disease ;; turtle procedure
+  if masque? and random 100 > 2 [ stop ] ;; if the turtle has a mask, only 2% chance of spreading germs.
+
   if ( confinement? = false or rebel? ) [ ;; Neighbors talking face-to-face
-    if masque? and random 100 > 2 [ stop ] ;; if the turtle has a mask, only 2% chance of spreading germs.
     if (random 100 < 20 ) ;; 20% for an encounter between two turtles.
       [
         if (count other turtles-here != 0) [ask one-of other turtles-here [ maybe-get-sick ] ]
     ]
   ]
 
-  if masque? and random 100 > 2 [ stop ] ;; if the turtle has a mask, only 2% chance of spreading germs.
   ask patch-here
   [
     if ( random 100 > 50 )
@@ -734,7 +779,7 @@ j-deconfinement
 j-deconfinement
 1
 120
-30.0
+60.0
 1
 1
 NIL
