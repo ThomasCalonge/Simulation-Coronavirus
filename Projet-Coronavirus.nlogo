@@ -2,65 +2,59 @@
 ;; Declarations ;;
 ;;;;;;;;;;;;;;;;;;
 
-globals
-[
-  ;; number of turtles that are sick
-  num-sick
+globals [
   ;; when multiple runs are recorded in the plot, this
   ;; tracks what run number we're on
   run-number
   ;; counter used to keep the model running for a little
   ;; while after the last turtle gets infected
   delay
-  nb-place-disponible
-  deaths
-  ;; when the confinement is declared
-  confinement?
-  delay-deconfinement
-  ;; boolean value to check if we already confined,deconfined the population.
-  only-once
-
-  ticks-a-day ;; constant value to define how many ticks is a full day.
-  debut-croissance? ;; when the confinement starts, all values are growing up.
-
-  nb-lit-croissant ;; used for both the plot and the nb-lit-disponible
+  nb-sick               ;; int - sick turtles number
+  nb-free-ic-places     ;; int - available intensive care places
+  ic-places-growth      ;; int - intensive care places growth rate
+  nb-deaths             ;; int - number of deaths
+  in-confinement?       ;; bool - whether confinement is or not
+  delay-unconfinement   ;; int - confinement duration
+  already-happened?     ;; bool - whether confinement has been or not yet
+  ticks-a-day           ;; int - how many tick happen per day
+  growth-start?         ;; bool - certain values are evolving when confinement has started
 ]
 
-breed [ sedentaires sedentaire ]
-breed [ routiers routier ]
+breed [ sedentaries sedentary ]
+breed [ mobiles mobile ]
 
 ;; patches variables
-patches-own
-[
-  dying-time ;; turtles own timer for incubating, sick or dying.
-  germes? ;; whether there is a presence of germs on a patch (true/false)
-  germes ;; from 0-100 germs spread on a patch.
+patches-own [
+  dying-time            ;; turtles own timer for incubating, sick or dying.
+  has-germs?            ;; bool - whether there are germs on a patch
+  germs-amount          ;; int - 0-100 amount of germs on a patch
 ]
 
 ;; turtles variables
-turtles-own
-[
-  rebel?;; turtles can be a rebel ;)
-  masque? ;; whether the turtle has a mask (true/false)
-
-  count-time ;; turtles own timer for incubating, sick or dying.
-  reanimation? ;; whether turtle have access to a bed in hospital (true/false)
-  incubation? ;; whether turtle is incubating (true/false)
-  malade?    ;; whether turtle is sick (true/false)
-  grave?     ;; whether turtle needs reanimation (true/false)
-  immunise?  ;; whether turtle  is immune to the sickness (true/false)
-  confiner? ;; whether turtle state is confined (true/false)
-
-  chance-to-die ;; if the turtle is in reanimation, the chances are increasing without it.
-  chance-to-go ;; each 3 days, the chance to go for the turtle are increasing.
+turtles-own [
+  has-mask?             ;; bool - whether turtle has a mask
+  is-rebel?             ;; bool - whether turtle is a rebel
+  is-sick?              ;; bool - whether turtle is sick
+  needs-care?           ;; bool - whether turtle needs to be in intensive care
+  in-intensive-care?    ;; bool - whether turtle is in intensive care
+  is-incubating?        ;; bool - whether turtle is incubating
+  is-immune?            ;; bool - whether turtle is immune
+  is-confined?          ;; bool - whether turtle is confined
+  count-time            ;; int - timer for incubating, being sick or dying
+  proba-to-die          ;; int - death probability - probabilities are increasing if turtle is not in intensive care
+  proba-to-go           ;; ??? - each 3 days, probability to go for the turtle are increasing
 ]
-sedentaires-own [
-  workdone? ;; if the turtle has been to work or replenish to house
-  house ;; all turtles spawn at his house
-  work ;; his work is at a random radius between 3-20 patches away
+
+;; sedentary turtles variables
+sedentaries-own [
+  is-work-done?         ;; bool - whether turtle has been to work today
+  house                 ;; patch - turtle spawn patch
+  work                  ;; patch - turtle work patch at a random radius between 3-20 patches away
 ]
-routiers-own [
-  road-done ;; whenever an agent has done 5 tick, he change his orientation
+
+;; mobile turtle variables
+mobiles-own [
+  road-done             ;; int - change orientation every 5 ticks
 ]
 
 ;;;;;;;;;;;;;;;;;;;;;
@@ -86,73 +80,91 @@ end
 to setup-world
   ;; All values to 0.
   set-default-shape turtles "android"
-  set debut-croissance? false
-  set num-sick 0
+
+  set nb-sick 0
   set delay 0
-  set delay-deconfinement 0
-  set only-once false
-  set confinement? false
-  ask patches [ set germes? false ]
+  set delay-unconfinement 0
+
+  set growth-start? false
+  set already-happened? false
+  set in-confinement? false
+
+  ask patches [ set has-germs? false ]
 
   set ticks-a-day 12
-  create-population
-  set nb-place-disponible max-hopital
+  create-people
+  set nb-free-ic-places intensive-care-places
   reset-ticks
 end
+
+
+
 
 to infect
   ask one-of turtles [ get-sick ]
 end
 
-to confinement-population
-  set delay-deconfinement 0
 
-  if (only-once and stop-and-go?) [
-    ask turtles with [ confiner? ] [ set confiner? false ]
-  ] ;; reset number of confined in model stop and go.
 
-  repeat count sedentaires * 0.9 [
-    ask one-of sedentaires with [ confiner? = false ]
-    [ set confiner? true ]
-  ]
-end ;; methods to choose the turtles who will be confined
+;; methods to choose the turtles who will be confined
+to confine-people
+  set delay-unconfinement 0
 
-to deconfinement-population
-  if (not only-once) [
-    repeat num-population * (%population-with-mask / 100) [
-      ask one-of turtles with [ masque? = false ] [ set masque? true ]
+  ;; reset number of confined in model stop and go.
+  if (already-happened? and stop-and-go?) [
+    ask turtles with [ is-confined? ] [
+      set is-confined? false
     ]
   ]
 
-  set only-once true
-  set delay-deconfinement 0
-end ;; setup the deconfinement, and put mask on people
+  repeat count sedentaries * 0.9 [
+    ask one-of sedentaries with [ is-confined? = false ] [
+      set is-confined? true
+    ]
+  ]
+end
 
-to deconfinement-population-progressive
-  if (delay-deconfinement mod (7 * ticks-a-day) = 0) ;; day multiplied by the tick needed for a day
+;; unconfine people
+;; give a mask to some people
+to unconfine-people
+  if (not already-happened?) [
+    repeat nb-people * (mask-equipped-people-amount / 100) [
+      ask one-of turtles with [ has-mask? = false ] [
+        set has-mask? true
+      ]
+    ]
+  ]
+
+  set already-happened? true
+  set delay-unconfinement 0
+end
+
+to unconfine-people-progressive
+  if (delay-unconfinement mod (7 * ticks-a-day) = 0) ;; day multiplied by the tick needed for a day
   [
 
-    repeat count turtles with [ confiner? ] * (%population-deconfined-per-week / 100) [
-      ifelse (count turtles with [ confiner? ] > 0) [
-        ask one-of turtles with [ confiner? and not malade? ] [ set confiner? false ]
+    repeat count turtles with [ is-confined? ] * (progressive-unconfined-people-amount / 100) [
+      ifelse (count turtles with [ is-confined? ] > 0)
+      [
+        ask one-of turtles with [ is-confined? and not is-sick? ] [
+          set is-confined? false
+        ]
       ]
       [ stop ]
     ]
   ]
 end
 
-to create-population
-  create-sedentaires num-population * 0.95
-  [
+to create-people
+  create-sedentaries nb-people * 0.95 [
     let x random-pxcor
     let y random-pycor
 
-    ;; put androids on patch centers
+    ;; put humans on patch centers
     setxy x y
 
     set house patch-here
-    set work one-of patches in-radius ((random 17)
-      + 3)
+    set work one-of patches in-radius ((random 17) + 3)
 
     set color gray
 
@@ -160,33 +172,31 @@ to create-population
     set count-time 1
 
     ;; all boolean value to false, means the agent is sane
-    set malade? false
-    set incubation? false
-    set grave? false
-    set immunise? false
-    set reanimation? false
-    set workdone? false
-    ;; confinement relate boolean value.
-    set masque? false
-    set confiner? false
+    set is-sick? false
+    set is-incubating? false
+    set needs-care? false
+    set is-immune? false
+    set in-intensive-care? false
+    set is-work-done? false
 
-    set chance-to-die 35
-    set chance-to-go 10
+    ;; confinement related boolean value.
+    set has-mask? false
+    set is-confined? false
 
-    ifelse(random 100 < taux-desobeissance) [
-      set rebel? true
-    ]
-    [
-      set rebel? false
-    ]
+    set proba-to-die 35
+    set proba-to-go 10
+
+    ifelse(random 100 < desobediance-rate)
+    [ set is-rebel? true ]
+    [ set is-rebel? false ]
   ]
 
-  create-routiers num-population * 0.05
+  create-mobiles nb-people * 0.05
   [
     let x random-pxcor
     let y random-pycor
 
-    ;; put androids on patch centers
+    ;; put humans on patch centers
     setxy x y
 
     set color gray
@@ -196,56 +206,60 @@ to create-population
     set count-time 1
 
     ;; all boolean value to false, means the agent is sane
-    set malade? false
-    set incubation? false
-    set grave? false
-    set reanimation? false
-    set immunise? false
+    set is-sick? false
+    set is-incubating? false
+    set needs-care? false
+    set in-intensive-care? false
+    set is-immune? false
 
-    set confiner? false
-    set masque? false
+    set is-confined? false
+    set has-mask? false
 
-    set chance-to-die 35
-    set chance-to-go 10
+    set proba-to-die 35
+    set proba-to-go 10
 
-    ifelse(random 100 < taux-desobeissance) [
-      set rebel? true
-    ]
-    [
-      set rebel? false
-    ]
+    ifelse (random 100 < desobediance-rate)
+    [ set is-rebel? true ]
+    [ set is-rebel? false ]
   ]
 end
 
 to croissance
 
-  if(only-once) [
-    let nb-mask count turtles with [ not masque? ]
-    if nb-mask > 0 [
-      repeat nb-mask * (%croissance-mask / 100) [
-        if (count turtles with [ not masque? ] > 0) [
-          ask one-of turtles with [ not masque? ] [ set masque? true ]
+  ;; Croissance du port du masque
+  if ( already-happened? ) [
+    let nb-mask count turtles with [ not has-mask? ]
+    if ( nb-mask > 0 ) [
+      repeat nb-mask * (getting-mask-growth / 100) [
+        if (count turtles with [ not has-mask? ] > 0) [
+          ask one-of turtles with [ not has-mask? ] [
+            set has-mask? true
+          ]
         ]
       ]
     ]
   ]
-  ;; Croissance du port du masque
 
-  set nb-lit-croissant nb-lit-croissant + (max-hopital * (%croissance-lit-reanimation / 100)) ;; used for the plot
+  ;; Intensive Care places growth
 
-  let nb-lit-suppl (max-hopital * (%croissance-lit-reanimation / 100))
-  set nb-place-disponible nb-place-disponible + nb-lit-suppl
-  ;; Croissance des lit d'hopitaux
+  ;; plot reporter
+  set ic-places-growth ic-places-growth + (intensive-care-places * (ic-places-growth-rate / 100))
 
-  let nb-rebels count turtles with [ rebel? ]
+  let nb-more-ic-places (intensive-care-places * (ic-places-growth-rate / 100))
+  set nb-free-ic-places nb-free-ic-places + nb-more-ic-places
+
+  let nb-rebels count turtles with [ is-rebel? ]
+
+  ;; Rebels number degrowth
   if nb-rebels > 0 [
-    repeat nb-rebels * (%decroissance-desobeissance / 100) [
-      if (count turtles with [ rebel? ] > 0) [
-        ask one-of turtles with [ rebel? ] [ set rebel? false ]
+    repeat nb-rebels * (desobedience-degrowth / 100) [
+      if (count turtles with [ is-rebel? ] > 0) [
+        ask one-of turtles with [ is-rebel? ] [
+          set is-rebel? false
+        ]
       ]
     ]
   ]
-  ;; Decroissance des gens desobeissant
 
 end
 
@@ -256,280 +270,306 @@ end
 to go
   ;; in order to extend the plot for a little while
   ;; after all the turtles are infected...
-  if num-sick = count turtles
-  [ set delay delay + 1  ]
-  if delay > 50
-  [ stop ]
+  if ( nb-sick = count turtles ) [
+    set delay delay + 1
+  ]
+  if ( delay > 50 ) [
+    stop
+  ]
 
-  if (debut-croissance? and ticks mod (7 * ticks-a-day) = 0) [
+  ;; each week, there an increase values of things
+  ;; we are not in a static model.
+  if (growth-start? and ticks mod (7 * ticks-a-day) = 0 ) [
     croissance
-  ] ;; each week, there an increase values of things, we are not in a static model.
+  ]
 
-  if (only-once and not confinement?) [ deconfinement-population-progressive ]
+  if (already-happened? and not in-confinement?) [
+    unconfine-people-progressive
+  ]
 
-  if (confinement? = true or only-once) [ set delay-deconfinement delay-deconfinement + 1 ]
+  if (in-confinement? = true or already-happened?) [
+    set delay-unconfinement delay-unconfinement + 1
+  ]
 
-  if confinement and (delay-deconfinement > j-deconfinement * ticks-a-day) and confinement? and (not only-once or stop-and-go?) [ ;; ticks-a-day multiplied by the days needed for deconfinement.
-    set confinement? false deconfinement-population
-  ] ;; the deconfinement begins
+  ;; ticks-a-day multiplied by the days needed for deconfinement.
+  ;; the deconfinement begins
+  if confinement and (delay-unconfinement > confinement-duration * ticks-a-day) and in-confinement? and (not already-happened? or stop-and-go?) [
+    set in-confinement? false
+    unconfine-people
+  ]
 
-  if confinement and (num-sick * (%detected / 100) > num-population * ( %population-needed-to-start / 100)) and not confinement? and (not only-once or (stop-and-go? and delay-deconfinement > (j-stop-and-go * ticks-a-day))) [
-    set debut-croissance? true
-    set confinement? true confinement-population
-  ] ;; the confinement begins
-
+  ;; the confinement begins
+  if confinement and (nb-sick * (%detected / 100) > nb-people * ( triggering-infected-people-amount / 100)) and not in-confinement? and (not already-happened? or (stop-and-go? and delay-unconfinement > (j-stop-and-go * ticks-a-day))) [
+    set growth-start? true
+    set in-confinement? true
+    confine-people
+  ]
 
   ;; now for the main stuff;
   change-color
   sickness-evolution
-  androids-wander
+  humans-wander
 
   ;; infected people spit their lungs on surfaces
-  ask turtles with [ incubation? and count-time > 80 ] [ spread-disease ]
+  ask turtles with [ is-incubating? and count-time > 80 ] [
+    spread-disease-turtle
+  ]
 
   ;; sick people spit their lungs on surfaces
-  ask turtles with [ malade? ] [ spread-disease ]
+  ask turtles with [ is-sick? ] [
+    spread-disease-turtle
+  ]
 
   ;; germs spread virus
-  ask patches with [ germes? ] [ spread-disease-patch ]
+  ask patches with [ has-germs? ] [
+    spread-disease-patch
+  ]
 
-  set num-sick count turtles with [ malade? ]
+  set nb-sick count turtles with [ is-sick? ]
 
   tick
 end
 
 ;; manage each object color
 to change-color
-  ask turtles with [ immunise? ] [ set color blue ]
-  ask turtles with [ incubation? ] [ set color white ]
-  ask turtles with [ malade? ] [ set color green ]
-  ask turtles with [ grave? ] [ set color red ]
-  ask patches with [ germes? ] [ set pcolor 51 ]
-  ask patches with [ germes? = false ] [ set pcolor black ]
+  ask turtles with [ is-immune? ] [ set color blue ]
+  ask turtles with [ is-incubating? ] [ set color white ]
+  ask turtles with [ is-sick? ] [ set color green ]
+  ask turtles with [ needs-care? ] [ set color red ]
+  ask patches with [ has-germs? ] [ set pcolor 51 ]
+  ask patches with [ has-germs? = false ] [ set pcolor black ]
 end
 
 to sickness-evolution
+
+
   ;; each tick kill virus
-  ask patches with [ germes? ] [
-    if ( germes = 0 )
-    [ set germes? false ]
+  ask patches with [ has-germs? ] [
+
+    if ( germs-amount = 0 ) [
+      set has-germs? false
+    ]
+
     ;; germ is aging
     set dying-time dying-time + 1
+
     ;; germs die outside an host
-    if(dying-time = 2)
-    [
+    if( dying-time = 2 ) [
       set dying-time 0
-      set germes germes - 20
+      set germs-amount germs-amount - 20
     ]
+
   ]
 
-  ;; -----------------------------------
-  ;; -- PROCEDURE WHEN IN INCUBATION  --
-  ;; -----------------------------------
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; PROCEDURE WHEN IN INCUBATION  ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
   ;; incubation after an elpased time
-  ask turtles with [ incubation? ]
-  [
+  ask turtles with [ is-incubating? ] [
+
     ifelse ( count-time mod (14 * ticks-a-day) = 0 )
     [
-      set incubation? false
-      set malade? true
+      set is-incubating? false
+      set is-sick? true
       set count-time 1
     ]
     [ set count-time count-time + 1 ]
   ]
 
-  ;; -----------------------------------
-  ;; --   PROCEDURE WHEN IN SICKNESS  --
-  ;; -----------------------------------
 
-  ask turtles with [ malade? ]
-  [
-    if ( count-time mod (7 * ticks-a-day) = 0)
-    [
-      set malade? false
-      set immunise? true
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; PROCEDURE WHEN IN SICKNESS  ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  ask turtles with [ is-sick? ] [
+
+    if ( count-time mod (7 * ticks-a-day) = 0) [
+      set is-sick? false
+      set is-immune? true
     ]
-    ifelse ( (count-time mod ticks-a-day = 0) and random 100 < 1 ) ;; Tous les 12 ticks (1 journée), l'agent tire un jet aléatoire il a 1% de chance d'allez en réanimation.
+
+    ;; Every 12 ticks, turtle rolls dice to go
+    ;; in intensive care or not with a 1% risk
+    ifelse ( (count-time mod ticks-a-day = 0) and (random 100 < 1) )
     [
-      set grave? true
-      set malade? false
+      set needs-care? true
+      set is-sick? false
       set count-time 1
     ]
     [ set count-time count-time + 1 ]
-  ] ;; 5% risk to get in intensive care
+  ]
 
 
-  ;; -----------------------------------
-  ;; -- PROCEDURE WHEN IN REANIMATION --
-  ;; -----------------------------------
-  ask turtles with [ grave? ]
-  [
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; PROCEDURE WHEN IN INTENSIVE CARE  ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+  ask turtles with [ needs-care? ] [
     let is-day? (count-time mod ticks-a-day) = 0
     let is-three-days? (count-time mod (ticks-a-day * 3)) = 0
 
     if (is-three-days?) [
-      ifelse (random 100 < chance-to-go)
-    [
-      if (reanimation?) [
-        set nb-place-disponible nb-place-disponible + 1
-        set reanimation? false
-      ]
-
-      set grave? false
-      set immunise? true
-
-      stop
-    ]
-
-    [
-      ifelse (reanimation?) [
-        set chance-to-go chance-to-go + 15
-      ]
-
+      ifelse (random 100 < proba-to-go)
       [
-        set chance-to-go chance-to-go + 5
+        if (in-intensive-care?) [
+          set nb-free-ic-places nb-free-ic-places + 1
+          set in-intensive-care? false
+        ]
+
+        set needs-care? false
+        set is-immune? true
+
+        stop
       ]
-    ]
+      [
+        ifelse (in-intensive-care?)
+        [ set proba-to-go proba-to-go + 15 ]
+        [ set proba-to-go proba-to-go + 5 ]
+      ]
     ]
 
 
     ;; taking one intensive care slot
-    if ( nb-place-disponible > 0 and not reanimation?)
-    [
-      set chance-to-die 5
-      set chance-to-go 35
-      set nb-place-disponible nb-place-disponible - 1
-      set reanimation? true
+    if ( nb-free-ic-places > 0 and not in-intensive-care?) [
+      set proba-to-die 5
+      set proba-to-go 35
+      set nb-free-ic-places nb-free-ic-places - 1
+      set in-intensive-care? true
     ]
 
-    if ( is-three-days? )
-    [
-      ifelse (reanimation?)
+    if ( is-three-days? ) [
+      ifelse (in-intensive-care?)
       [
-
-        ifelse ( random 100 < chance-to-die )
+        ifelse ( random 100 < proba-to-die )
         [
-          set deaths deaths + 1
-          set nb-place-disponible nb-place-disponible + 1
-
+          set nb-deaths nb-deaths + 1
+          set nb-free-ic-places nb-free-ic-places + 1
           die
-        ] ;; 5% risk of dying if the agent as an instensive care slot
-
-        [
-          set chance-to-die chance-to-die + 5
         ]
+        [ set proba-to-die proba-to-die + 5 ]
       ]
       [
-        ifelse ( random 100 < chance-to-die )
-          [
-            set deaths deaths + 1
-
-            die
-        ]
+        ifelse ( random 100 < proba-to-die )
         [
-          set chance-to-die chance-to-die + 15
+          set nb-deaths nb-deaths + 1
+          die
         ]
+        [ set proba-to-die proba-to-die + 15 ]
       ]
-    ] ;; 35% increasing by the time, chance of risk of dying if no slot in hospital
+    ]
     set count-time count-time + 1
-  ] ;; 20% risk of dying in intensive care
+  ]
 end
 
-;; controls the motion of the androids
-to androids-wander
-  ask sedentaires with [ grave? = false ]
-  [
+;; controls the motion of the humans
+to humans-wander
+  ask sedentaries with [ needs-care? = false ] [
     ;; 1% probability to go abroad
-    if ( (random 100 > 98) and (confiner? = false) and (ticks mod 20 = 0))
-    [ setxy random-pxcor random-pycor ]
+    if ( (random 100 > 98) and (is-confined? = false) and (ticks mod 20 = 0)) [
+      setxy random-pxcor random-pycor
+    ]
 
     ;; Commuting back to home
-    if ( patch-here = work )
-    [ set workdone? true ]
+    if ( patch-here = work ) [
+      set is-work-done? true
+    ]
 
     ;; Commuting to work
-    if ( patch-here = house )
-    [ set workdone? false ]
+    if ( patch-here = house ) [
+      set is-work-done? false
+    ]
 
     ;; face direction
-    ifelse ( workdone? and not confiner?)
+    ifelse ( is-work-done? and not is-confined? )
     [ face house fd 1 ]
     [ face work fd 1 ]
 
     ;; returns home
-    if (patch-here != house and confiner?)
-    [ move-to house]
+    if (patch-here != house and is-confined?) [
+      move-to house
+    ]
 
-    if ( confiner? and (ticks mod 5 = 0) and (patch-here = house) and rebel? ) [ ;; Si un citoyen est ne respect pas le confinement, alors il va se promener autour de sa maison
+    ;; if a citizen does not stay at home,
+    ;; then he takes his dog out
+    if ( is-confined? and (ticks mod 5 = 0) and (patch-here = house) and is-rebel? ) [
       rt 45 * random 8
       fd 1
     ]
   ]
 
-  ask routiers with [ grave? = false ]
-  [
-    if ( road-done = 5 )
-    [
+  ask mobiles with [ needs-care? = false ] [
+    if ( road-done mod 5 = 0 ) [
       rt (random 180) - 90
-      set road-done 0
     ]
     set road-done road-done + 1
     fd 3
   ]
 end
 
-to spread-disease ;; turtle procedure
-  if masque? and random 100 < %impact-of-mask [ stop ] ;; if the turtle has a mask, %chance of impact-of-mask.
+;; turtle procedure
+;; if the turtle has a mask, %chance of impact-of-mask.
+to spread-disease-turtle
+  if (has-mask? and random 100 < mask-protection-rate) [
+    stop
+  ]
 
-  if ( confinement? = false or rebel? ) [ ;; Neighbors talking face-to-face
-    if (random 100 < 20 ) ;; 20% for an encounter between two turtles.
-      [
-        if (count other turtles-here != 0) [ask one-of other turtles-here [ maybe-get-sick ] ]
+  ;; Neighbors talking face-to-face
+  if ( in-confinement? = false or is-rebel? ) [
+    ;; 20% for an encounter between two turtles.
+    if (random 100 < 20 ) [
+      if (count other turtles-here != 0) [
+        ask one-of other turtles-here [ maybe-get-sick ]
+      ]
     ]
   ]
 
-  ask patch-here
-  [
-    if ( random 100 > 50 )
-    [
-      set germes? true
-      set germes 100
+  ask patch-here [
+    if ( random 100 > 50 ) [
+      set has-germs? true
+      set germs-amount 100
       set dying-time 0
     ]
   ]
 
 end
 
-to spread-disease-patch ;; patch procedure
-  ;; if a turtle touches a surface, then it'll be infected, depending on germ rate
-  if ( random 100 > germes / 2 )
-  [ ask turtles-here [ maybe-get-sick ] ]
+;; patch procedure
+;; > if a turtle is on a patch, then
+;; > it'll be infected depending on germ rate
+to spread-disease-patch
+  if ( random 100 > germs-amount / 2 ) [
+    ask turtles-here [ maybe-get-sick ]
+  ]
 end
 
-to maybe-get-sick ;; turtle procedure
-  ;; roll the dice and maybe get sick
-  if ( not malade? ) and ( random 100 < infection-chance ) and confiner? = false
+;; turtle procedure
+;; > rolls the dice and maybe become sick
+to maybe-get-sick
+  if ( not is-sick? and random 100 < contagiousness and is-confined? = false)
   [ get-sick ]
 end
 
-;; set the appropriate variables to make this turtle sick
-to get-sick ;; turtle procedure
-  if ( not malade? ) and ( not incubation? ) and ( not grave? ) and ( not immunise? )
-  [ set incubation? true ]
+;; turtle procedure
+;; > set the appropriate variables to make this turtle sick
+to get-sick
+  if ( not is-sick? and not is-incubating? and not needs-care? and not is-immune? )
+  [ set is-incubating? true ]
 end
 
 ;; Projet de recherche M1 Informatique CILS, Guillaume COQUARD et Thomas CALONGE -- Année 2020
 @#$#@#$#@
 GRAPHICS-WINDOW
-251
+253
 10
-1030
-790
+1041
+799
 -1
 -1
-3.0
+3.03502
 1
 10
 1
@@ -550,10 +590,10 @@ ticks
 10.0
 
 BUTTON
-24
-46
-126
-79
+8
+52
+110
+85
 setup/clear
 setup-clear
 NIL
@@ -567,10 +607,10 @@ NIL
 1
 
 BUTTON
-23
-115
-125
-148
+9
+129
+111
+162
 NIL
 go
 T
@@ -584,12 +624,12 @@ NIL
 0
 
 SLIDER
-21
-151
-200
-184
-infection-chance
-infection-chance
+10
+195
+242
+228
+contagiousness
+contagiousness
 0
 100
 50.0
@@ -600,10 +640,10 @@ HORIZONTAL
 
 PLOT
 10
-239
-240
-416
-Number Sick
+230
+242
+407
+Incubating / Sick
 time
 sick
 0.0
@@ -612,17 +652,18 @@ sick
 6.0
 true
 false
-"create-temporary-plot-pen word \"run \" run-number\nset-plot-pen-color item (run-number mod 5)\n                        [blue red green orange violet]" "plot num-sick"
+"" ""
 PENS
-"default" 1.0 0 -16777216 true "" ""
+"sick" 1.0 0 -2674135 true "create-temporary-plot-pen word \"run \" run-number\nset-plot-pen-color item (run-number mod 5)\n                        [blue red green orange violet]" "plot count turtles with [ is-sick? ]"
+"is-incubating" 1.0 0 -955883 true "" "plot count turtles with [ is-incubating? ]"
 
 SLIDER
-24
+9
 10
-203
+241
 43
-num-population
-num-population
+nb-people
+nb-people
 1
 10000
 10000.0
@@ -632,21 +673,21 @@ NIL
 HORIZONTAL
 
 MONITOR
-80
-191
-170
-236
-Number Sick
-num-sick
+130
+409
+242
+454
+Sick People
+nb-sick
 0
 1
 11
 
 BUTTON
-24
-80
-126
-113
+8
+87
+110
+120
 setup/keep
 setup-keep
 NIL
@@ -660,45 +701,45 @@ NIL
 1
 
 TEXTBOX
-138
-92
-235
-110
+124
+96
+221
+114
 keeps old plots
 11
 0.0
 0
 
 TEXTBOX
-138
-57
-235
-75
+124
+62
+221
+80
 clears old plots\n
 11
 0.0
 0
 
 SLIDER
-47
-449
-196
-482
+452
+810
+544
+843
 step-size
 step-size
 1
 5
-1.0
+5.0
 1
 1
 NIL
 HORIZONTAL
 
 BUTTON
-127
-114
-229
-147
+120
+129
+222
+162
 NIL
 infect
 NIL
@@ -712,12 +753,12 @@ NIL
 0
 
 SLIDER
-1104
-42
-1276
-75
-max-hopital
-max-hopital
+1051
+10
+1304
+43
+intensive-care-places
+intensive-care-places
 10
 1000
 10.0
@@ -727,11 +768,11 @@ NIL
 HORIZONTAL
 
 PLOT
-1064
-103
-1317
-302
-Place en réanimation
+1051
+214
+1304
+413
+Intensive Care Places
 NIL
 NIL
 0.0
@@ -742,14 +783,14 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot nb-place-disponible"
+"default" 1.0 0 -16777216 true "" "plot nb-free-ic-places"
 
 PLOT
-1065
-507
-1319
-694
-Nombre de mort
+1051
+612
+1305
+799
+Deaths Toll
 NIL
 NIL
 0.0
@@ -760,14 +801,14 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot deaths"
+"default" 1.0 0 -16777216 true "" "plot nb-deaths"
 
 PLOT
-1065
-305
-1321
-500
-Gens ayant besoin d'une réanimation
+1051
+415
+1305
+610
+People in need of Intensive Care
 NIL
 NIL
 0.0
@@ -778,71 +819,53 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot count turtles with [ grave? ]"
-"pen-1" 1.0 0 -5298144 true "" "plot max-hopital + nb-lit-croissant"
+"default" 1.0 0 -16777216 true "" "plot count turtles with [ needs-care? ]"
+"pen-1" 1.0 0 -5298144 true "" "plot intensive-care-places + ic-places-growth"
 
 MONITOR
-62
-497
-180
-542
-Number Incubating
-count turtles with [ incubation? ]
+10
+409
+128
+454
+Incubating People
+count turtles with [ is-incubating? ]
 17
 1
 11
 
 SWITCH
-65
-754
-189
-787
+11
+485
+243
+518
 confinement
 confinement
 0
 1
 -1000
 
-PLOT
-12
-548
-236
-724
-Number Incubating
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "plot count turtles with [ incubation? ]"
-
 SLIDER
-18
-800
-346
-833
-%population-needed-to-start
-%population-needed-to-start
+11
+649
+243
+682
+triggering-infected-people-amount
+triggering-infected-people-amount
 0
-10
-0.5
+5
+0.691
 0.001
 1
 NIL
 HORIZONTAL
 
 SLIDER
-366
-801
-538
-834
-j-deconfinement
-j-deconfinement
+11
+567
+243
+600
+confinement-duration
+confinement-duration
 1
 120
 50.0
@@ -852,49 +875,49 @@ NIL
 HORIZONTAL
 
 SLIDER
-559
-803
-731
-836
-taux-desobeissance
-taux-desobeissance
+567
+809
+799
+842
+desobediance-rate
+desobediance-rate
 0
 100
-30.0
+33.0
 1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-747
-797
-834
-842
+11
+520
+243
+565
 NIL
-confinement?
+in-confinement?
 17
 1
 11
 
 MONITOR
-1082
-714
-1305
-759
-Population non-confiner
-count turtles with [ confiner? = false ]
+11
+810
+166
+855
+Not Confined People
+count turtles with [ is-confined? = false ]
 17
 1
 11
 
 SLIDER
-556
-841
-736
-874
-%population-with-mask
-%population-with-mask
+809
+809
+1041
+842
+mask-equipped-people-amount
+mask-equipped-people-amount
 0
 100
 40.0
@@ -904,49 +927,49 @@ NIL
 HORIZONTAL
 
 MONITOR
-1100
-770
-1278
-815
-Population ayant un masque
-count turtles with [ masque? ]
+1051
+809
+1229
+854
+People Having a Mask
+count turtles with [ has-mask? ]
 17
 1
 11
 
 SLIDER
-300
-840
-542
-873
-%population-deconfined-per-week
-%population-deconfined-per-week
+11
+766
+243
+799
+progressive-unconfined-people-amount
+progressive-unconfined-people-amount
 1
 100
-25.0
+22.0
 1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-848
-796
-1014
-841
-Jours depuis le confinement
-int (delay-deconfinement / 12)
+11
+602
+243
+647
+Days since Confinement
+int (delay-unconfinement / 12)
 17
 1
 11
 
 SLIDER
-119
-839
-291
-872
-%impact-of-mask
-%impact-of-mask
+1051
+80
+1304
+113
+mask-protection-rate
+mask-protection-rate
 0
 100
 93.0
@@ -956,21 +979,21 @@ NIL
 HORIZONTAL
 
 MONITOR
-1098
-823
-1282
-868
-Gens étant dans un état grave
-count turtles with [ grave? ]
+1050
+166
+1303
+211
+People who need care
+count turtles with [ needs-care? ]
 17
 1
 11
 
 SLIDER
-797
-844
-969
-877
+11
+731
+243
+764
 %detected
 %detected
 0
@@ -982,10 +1005,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-1488
-43
-1617
-76
+255
+810
+427
+843
 stop-and-go?
 stop-and-go?
 0
@@ -993,21 +1016,21 @@ stop-and-go?
 -1000
 
 MONITOR
-1419
-90
-1680
-135
-Population nécessaire pour débuter le confinement
-num-population * ( %population-needed-to-start / 100)
-17
+11
+684
+243
+729
+Triggering Infected People Amount
+nb-people * ( triggering-infected-people-amount / 100)
+0
 1
 11
 
 SLIDER
-1469
-145
-1641
-178
+255
+846
+427
+879
 j-stop-and-go
 j-stop-and-go
 1
@@ -1019,12 +1042,12 @@ NIL
 HORIZONTAL
 
 SLIDER
-1471
-217
-1643
-250
-%croissance-mask
-%croissance-mask
+809
+843
+1041
+876
+getting-mask-growth
+getting-mask-growth
 0
 100
 10.0
@@ -1034,27 +1057,27 @@ NIL
 HORIZONTAL
 
 SLIDER
-1471
-257
-1690
-290
-%decroissance-desobeissance
-%decroissance-desobeissance
+567
+843
+799
+876
+desobedience-degrowth
+desobedience-degrowth
 0
 100
-10.0
+32.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-1471
-294
-1674
-327
-%croissance-lit-reanimation
-%croissance-lit-reanimation
+1051
+45
+1304
+78
+ic-places-growth-rate
+ic-places-growth-rate
 0
 100
 10.0
@@ -1064,12 +1087,12 @@ NIL
 HORIZONTAL
 
 MONITOR
-1301
-793
-1373
-838
-Gens rebel
-count turtles with [ rebel? ]
+169
+810
+243
+855
+Rebels
+count turtles with [ is-rebel? ]
 17
 1
 11
@@ -1089,7 +1112,7 @@ Androids can move using a few different simple strategies. By default they simpl
 
 The person may also catch the infection.
 
-Healthy "agents" on the same patch as sick agents have an INFECTION-CHANCE chance of becoming ill.
+Healthy "agents" on the same patch as sick agents have an contagiousness chance of becoming ill.
 
 ## HOW TO USE IT
 
@@ -1103,7 +1126,7 @@ INFECT - infects one of the androids
 ### Sliders
 
 NUM-ANDROIDS - determines how many androids are created at setup
-INFECTION-CHANCE - a healthy agent's chance at every time step to become sick if it is on the same patch as an infected agent
+contagiousness - a healthy agent's chance at every time step to become sick if it is on the same patch as an infected agent
 
 ### Monitors
 
