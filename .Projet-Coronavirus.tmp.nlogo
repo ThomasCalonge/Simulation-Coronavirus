@@ -337,7 +337,7 @@ to go
   androids-wander
 
   ;; infected people spit their lungs on surfaces
-  ask turtles with [ (is-incubating? and count-time > 80) or (is-sick? and not in-intensive-care?) ] [
+  ask turtles with [ (is-incubating? and count-time > 80) or (is-sick? ] [
     spread-disease-turtle
   ]
 
