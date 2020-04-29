@@ -218,7 +218,6 @@ to create-people
     ]
     [ set is-rebel?             false ]
   ]
-
   create-mobiles nb-people * 0.05 [
     set nb-mobiles              (nb-mobiles + 1)
 
@@ -256,11 +255,11 @@ to create-people
   ]
 end
 
+
 to croissance
-  ;; Croissance du port du masque
-  if (already-happened?) [
+  if (in-confinement? or (nb-needs-care > nb-free-ic-places)) [
     let nb-no-mask              (nb-alives - nb-has-mask)
-    if ( nb-no-mask > 0 ) [
+    if (nb-no-mask > 0) [
       repeat nb-no-mask * (having-mask-growth / 100) [
         if ((nb-alives - nb-has-mask) > 0) [
           ask one-of turtles with [ not has-mask? ] [
@@ -296,16 +295,16 @@ end
 to go
   ;; in order to extend the plot for a little while
   ;; after all the turtles are infected...
-  if ( nb-sick = nb-alives ) [
+  if (nb-sick = nb-alives) [
     set delay                   (delay + 1)
   ]
-  if ( delay > 50 ) [
+  if (delay > 50) [
     stop
   ]
 
   ;; each week, there an increase values of things
   ;; we are not in a static model.
-  if (growth-start? and ticks mod (7 * ticks-a-day) = 0 ) [
+  if (growth-start? and ticks mod (7 * ticks-a-day) = 0) [
     croissance
   ]
 
@@ -325,7 +324,7 @@ to go
   ]
 
   ;; the confinement begins
-  if confinement and (nb-sick * (%detected / 100) > nb-alives * ( infected-people-trigger / 100)) and not in-confinement? and (not already-happened? or (stop-and-go? and delay-unconfinement > (j-stop-and-go * ticks-a-day))) [
+  if confinement and (nb-sick * (%detected / 100) > nb-alives * (infected-people-trigger / 100)) and not in-confinement? and (not already-happened? or (stop-and-go? and delay-unconfinement > (j-stop-and-go * ticks-a-day))) [
     set growth-start?           true
     set in-confinement?         true
     confine-people
@@ -367,13 +366,13 @@ to sickness-evolution
 
   ;; each tick kill virus
   ask patches with [ has-germs? ] [
-    if ( germs-amount = 0 ) [
+    if (germs-amount = 0) [
       set has-germs?            false
     ]
     ;; germ is aging
     set dying-time              (dying-time + 1)
     ;; germs die outside an host
-    if( dying-time = 2 ) [
+    if(dying-time = 2) [
       set dying-time            0
       set germs-amount          (germs-amount - 20)
     ]
@@ -415,7 +414,7 @@ to sickness-evolution
         ]
         ;; Every 12 ticks, turtle rolls dice to go
         ;; in intensive care or not with a 1% risk
-        ifelse ( (count-time mod ticks-a-day = 0) and (random 100 < 1) )
+        ifelse ((count-time mod ticks-a-day = 0) and (random 100 < 1))
         [
           set needs-care?         true
           set nb-needs-care       (nb-needs-care + 1)
@@ -454,7 +453,7 @@ to sickness-evolution
             ]
           ]
           ;; taking one intensive care slot
-          if ( nb-free-ic-places > 0 and not in-intensive-care?) [
+          if (nb-free-ic-places > 0 and not in-intensive-care?) [
             set proba-to-die                5
             set proba-to-go                 35
             set nb-free-ic-places           (nb-free-ic-places - 1)
@@ -464,7 +463,7 @@ to sickness-evolution
           if (is-three-days?) [
             ifelse (in-intensive-care?)
             [
-              ifelse ( random 100 < proba-to-die )
+              ifelse (random 100 < proba-to-die)
               [
                 set nb-deaths               (nb-deaths + 1)
                 set nb-alives               (nb-alives - 1)
@@ -482,7 +481,7 @@ to sickness-evolution
               [ set proba-to-die (proba-to-die + 5) ]
             ]
             [
-              ifelse ( random 100 < proba-to-die )
+              ifelse (random 100 < proba-to-die)
               [
                 set nb-deaths               (nb-deaths + 1)
                 set nb-alives               (nb-alives - 1)
@@ -512,22 +511,22 @@ to androids-wander
     [
 
       ;; 1% probability to go abroad
-      if ( (random 100 > 98) and (is-confined? = false) and (ticks mod 20 = 0)) [
+      if ((random 100 > 98) and (is-confined? = false) and (ticks mod 20 = 0)) [
         setxy random-pxcor random-pycor
       ]
 
       ;; Commuting back to home
-      if ( patch-here = work ) [
+      if (patch-here = work) [
         set is-work-done? true
       ]
 
       ;; Commuting to work
-      if ( patch-here = house ) [
+      if (patch-here = house) [
         set is-work-done? false
       ]
 
       ;; face direction
-      ifelse ( is-work-done? and not is-confined? )
+      ifelse (is-work-done? and not is-confined?)
       [ face house fd 1 ]
       [ face work fd 1 ]
 
@@ -538,14 +537,14 @@ to androids-wander
 
       ;; if a citizen does not stay at home,
       ;; then he takes his dog out
-      if ( is-confined? and (ticks mod 5 = 0) and (patch-here = house) and is-rebel? ) [
+      if (is-confined? and (ticks mod 5 = 0) and (patch-here = house) and is-rebel?) [
         rt 45 * random 8
         fd 1
       ]
     ]
     [
       if (breed = mobiles and needs-care? = false) [
-        if ( road-done mod 5 = 0 ) [
+        if (road-done mod 5 = 0) [
           rt (random 180) - 90
         ]
         set road-done road-done + 1
@@ -563,7 +562,7 @@ to spread-disease-turtle
   ]
 
   ;; Neighbors talking face-to-face
-  if (in-confinement? = false or is-rebel? ) [
+  if (in-confinement? = false or is-rebel?) [
     ;; 20% for an encounter between two turtles.
     if (random 100 < 20) [
       if (count other turtles-here != 0) [
@@ -573,7 +572,7 @@ to spread-disease-turtle
   ]
 
   ask patch-here [
-    if ( random 100 > 50 ) [
+    if (random 100 > 50) [
       set has-germs? true
       set germs-amount 100
       set dying-time 0
@@ -586,7 +585,7 @@ end
 ;; > if a turtle is on a patch, then
 ;; > it'll be infected depending on germ rate
 to spread-disease-patch
-  if ( random 100 > germs-amount / 2 ) [
+  if (random 100 > germs-amount / 2) [
     ask turtles-here [ maybe-get-sick ]
   ]
 end
@@ -610,11 +609,11 @@ end
 GRAPHICS-WINDOW
 253
 10
-1041
-799
+1042
+800
 -1
 -1
-3.03502
+2.163435
 1
 10
 1
@@ -624,10 +623,10 @@ GRAPHICS-WINDOW
 0
 0
 1
--128
-128
--128
-128
+-180
+180
+-180
+180
 1
 1
 1
@@ -710,9 +709,9 @@ SLIDER
 nb-people
 nb-people
 1
-10000
+100000
 10000.0
-1
+100
 1
 NIL
 HORIZONTAL
@@ -898,7 +897,7 @@ infected-people-trigger
 infected-people-trigger
 0
 5
-0.046
+0.369
 0.001
 1
 NIL
@@ -951,7 +950,7 @@ MONITOR
 166
 855
 Not Confined People
-nb-confined
+nb-alives - nb-confined
 17
 1
 11
@@ -1066,7 +1065,7 @@ MONITOR
 243
 729
 Triggering Infected People Amount
-nb-people * ( infected-people-trigger / 100)
+nb-people * (infected-people-trigger / 100)
 0
 1
 11
