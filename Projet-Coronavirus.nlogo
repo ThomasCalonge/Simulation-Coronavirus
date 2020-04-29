@@ -375,7 +375,7 @@ to sickness-evolution
     ;; germ is aging
     set dying-time                          (dying-time + 1)
     ;; germs die outside an host
-    if(dying-time = 2) [
+    if(dying-time = 4) [
       set dying-time                        0
       set germs-amount                      (germs-amount - 20)
     ]
@@ -577,7 +577,7 @@ to spread-disease-turtle
   ask patch-here [
     if (random 100 > 50) [
       set has-germs? true
-      set germs-amount 100
+      set germs-amount 20
       set dying-time 0
     ]
   ]
@@ -717,7 +717,7 @@ nb-people
 nb-people
 0
 100000
-20000.0
+10000.0
 1000
 1
 NIL
@@ -805,9 +805,9 @@ HORIZONTAL
 
 PLOT
 883
-14
+10
 1331
-335
+331
 Intensive Care Informations
 Time
 People
