@@ -411,6 +411,7 @@ to sickness-evolution
           set nb-immune           (nb-immune + 1)
           set is-sick?            false
           set nb-sick             (nb-sick - 1)
+          stop
         ]
         ;; Every 12 ticks, turtle rolls dice to go
         ;; in intensive care or not with a 1% risk
@@ -884,7 +885,7 @@ SWITCH
 518
 confinement
 confinement
-0
+1
 1
 -1000
 
