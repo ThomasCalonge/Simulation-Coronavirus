@@ -392,7 +392,7 @@ to sickness-evolution
   ask turtles [
     ifelse (is-incubating?)
     [
-      ifelse (count-time mod (14 * ticks-a-day) = 0)
+      ifelse (count-time mod ((random (14 - 3) + 3) * ticks-a-day) = 0)
       [
         set is-incubating?                  false
         set nb-incubating                   (nb-incubating - 1)
