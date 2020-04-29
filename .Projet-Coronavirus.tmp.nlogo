@@ -805,9 +805,9 @@ HORIZONTAL
 
 PLOT
 883
-14
+10
 1331
-335
+331
 Intensive Care Informations
 Time
 People
@@ -902,10 +902,10 @@ in-confinement?
 11
 
 SLIDER
-432
-896
-664
-929
+809
+809
+1041
+842
 having-mask-rate
 having-mask-rate
 0
@@ -1032,10 +1032,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-432
-930
-664
-963
+809
+843
+1041
+876
 having-mask-growth
 having-mask-growth
 0
